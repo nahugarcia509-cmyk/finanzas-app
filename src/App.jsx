@@ -844,7 +844,7 @@ export default function App() {
   )
 
   if (loading) return <div className="center"><RefreshCw className="spin" /> Cargando finanzas…</div>
-  if (configured && !session) return <Auth />
+  if (configured && !session) return <Auth supabase={supabase} />
 
   return <div className="app">
     <style>{`
