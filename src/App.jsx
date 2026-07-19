@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   ArrowDownCircle, ArrowUpCircle, CalendarDays, CircleDollarSign, FolderCog,
-  LayoutDashboard, LogOut, Pencil, Plus, RefreshCw, Search, Settings2, Trash2,
+  LayoutDashboard, LogOut, Pencil, Plus, RefreshCw, Search, Settings, Settings2, Trash2,
   TrendingDown, TrendingUp, WalletCards, PiggyBank, ReceiptText, Download, Upload,
-  Eye, EyeOff
+  Eye, EyeOff, UserRound
 } from 'lucide-react'
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie,
@@ -115,10 +115,6 @@ export default function App() {
   const [editing, setEditing] = useState(null)
   const [notice, setNotice] = useState('')
   const [tab, setTab] = useState('dashboard')
-  const [passwordForm, setPasswordForm] = useState({ password: '', confirmPassword: '' })
-  const [showPassword, setShowPassword] = useState(false)
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  const [passwordBusy, setPasswordBusy] = useState(false)
   const [dashboardView, setDashboardView] = useState('overview')
   const [selectedReserveCategories, setSelectedReserveCategories] = useState(() => {
     try {
@@ -157,6 +153,11 @@ export default function App() {
     target: '',
     priority: 1
   })
+  const [profileName, setProfileName] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [repeatPassword, setRepeatPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [savingAccount, setSavingAccount] = useState(false)
 
   useEffect(() => {
     if (!configured) {
@@ -186,6 +187,53 @@ export default function App() {
   }, [])
 
   useEffect(() => { if (session) loadAll() }, [session])
+
+  useEffect(() => {
+    if (!session?.user) return
+    setProfileName(session.user.user_metadata?.name || session.user.user_metadata?.full_name || '')
+  }, [session])
+
+  const saveAccountSettings = async (e) => {
+    e.preventDefault()
+    if (!configured || !supabase || !session?.user) {
+      setNotice('La configuración de cuenta requiere una sesión activa de Supabase.')
+      return
+    }
+
+    const cleanName = profileName.trim()
+    const wantsPasswordChange = Boolean(newPassword || repeatPassword)
+
+    if (wantsPasswordChange) {
+      if (newPassword.length < 6) {
+        setNotice('La nueva contraseña debe tener al menos 6 caracteres.')
+        return
+      }
+      if (newPassword !== repeatPassword) {
+        setNotice('Las contraseñas no coinciden.')
+        return
+      }
+    }
+
+    setSavingAccount(true)
+    try {
+      const updates = { data: { name: cleanName, full_name: cleanName } }
+      if (wantsPasswordChange) updates.password = newPassword
+
+      const { data, error } = await supabase.auth.updateUser(updates)
+      if (error) throw error
+
+      if (data?.user) {
+        setSession(current => current ? { ...current, user: data.user } : current)
+      }
+      setNewPassword('')
+      setRepeatPassword('')
+      setNotice(wantsPasswordChange ? 'Nombre y contraseña actualizados correctamente.' : 'Nombre actualizado correctamente.')
+    } catch (error) {
+      setNotice(error?.message || 'No se pudieron guardar los cambios de la cuenta.')
+    } finally {
+      setSavingAccount(false)
+    }
+  }
 
   const seedRemoteIfEmpty = async (loadedAccounts, loadedCategories, loadedTransactions) => {
     if (loadedTransactions.length) return false
@@ -419,53 +467,6 @@ export default function App() {
     }
     const { error } = await supabase.from('categories').delete().eq('id', cat.id)
     if (error) setNotice(error.message); else loadAll()
-  }
-
-  const changePassword = async (e) => {
-    e.preventDefault()
-
-    if (!configured || !supabase) {
-      setNotice('La aplicación no está conectada con Supabase.')
-      return
-    }
-
-    const password = passwordForm.password
-    const confirmPassword = passwordForm.confirmPassword
-
-    if (password.length < 6) {
-      setNotice('La nueva contraseña debe tener al menos 6 caracteres.')
-      return
-    }
-
-    if (password !== confirmPassword) {
-      setNotice('Las contraseñas no coinciden.')
-      return
-    }
-
-    setPasswordBusy(true)
-    setNotice('')
-
-    try {
-      const { error } = await supabase.auth.updateUser({ password })
-      if (error) throw error
-
-      setPasswordForm({ password: '', confirmPassword: '' })
-      setShowPassword(false)
-      setShowConfirmPassword(false)
-      setNotice('Contraseña actualizada correctamente.')
-    } catch (error) {
-      setNotice(error?.message || 'No se pudo actualizar la contraseña.')
-    } finally {
-      setPasswordBusy(false)
-    }
-  }
-
-  const signOut = async () => {
-    if (!configured || !supabase) return
-
-    setNotice('')
-    const { error } = await supabase.auth.signOut()
-    if (error) setNotice(error.message)
   }
 
   const DATA_START = '2026-04'
@@ -922,28 +923,6 @@ export default function App() {
       .goal-actions button { padding:6px; min-width:32px; }
       @media (max-width:1000px) { .goal-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
       @media (max-width:650px) { .goal-grid { grid-template-columns:1fr; } }
-      .settings-page { max-width:900px; margin:0 auto; display:grid; gap:16px; }
-      .settings-hero { display:flex; align-items:center; gap:14px; }
-      .settings-hero-icon { width:48px; height:48px; border-radius:14px; display:grid; place-items:center; background:#183652; color:#38bdf8; flex:0 0 auto; }
-      .settings-hero-icon svg { width:25px; height:25px; }
-      .settings-hero h2 { margin:0 0 4px; }
-      .settings-hero p { margin:0; color:#8aa7c7; }
-      .settings-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
-      .settings-card { padding:20px; }
-      .settings-card h3 { margin:0 0 6px; }
-      .settings-card > p { margin:0 0 18px; color:#8aa7c7; line-height:1.5; }
-      .settings-form { display:grid; gap:14px; }
-      .settings-form label { display:grid; gap:7px; color:#b8c8d9; font-size:13px; font-weight:700; }
-      .password-field { position:relative; }
-      .password-field input { width:100%; padding-right:46px; }
-      .password-toggle { position:absolute; right:6px; top:50%; transform:translateY(-50%); width:36px; height:36px; padding:0; display:grid; place-items:center; border-radius:9px; }
-      .password-toggle svg { width:18px; height:18px; }
-      .settings-email { display:flex; justify-content:space-between; gap:12px; align-items:center; padding:12px 14px; border:1px solid #29405c; border-radius:11px; background:#0c1b2f; }
-      .settings-email span { color:#8aa7c7; font-size:12px; }
-      .settings-email b { overflow-wrap:anywhere; text-align:right; }
-      .settings-actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:4px; }
-      .gear-button.active { color:#fff; background:#183652; border-color:#38bdf8; }
-      @media (max-width:750px) { .settings-grid { grid-template-columns:1fr; } }
     `}</style>
     <style>{`
       .app, .app * { box-sizing: border-box; }
@@ -966,6 +945,24 @@ export default function App() {
       .category-table-grid { grid-template-columns:repeat(4,minmax(0,1fr)) !important; }
       .category-detail-card { min-width:0; }
       .category-detail-body { max-height:330px; overflow:auto; }
+      .account-settings { max-width:760px; margin:0 auto; }
+      .account-settings-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+      .account-settings label { display:flex; flex-direction:column; gap:8px; color:#9fb3c8; font-size:13px; }
+      .account-settings input { width:100%; }
+      .account-settings .full-row { grid-column:1 / -1; }
+      .password-field { position:relative; }
+      .password-field input { padding-right:48px; }
+      .password-toggle { position:absolute; right:6px; top:50%; transform:translateY(-50%); padding:7px !important; min-width:34px; }
+      .account-summary { display:flex; align-items:center; gap:14px; padding:14px; margin-bottom:18px; border:1px solid #29405c; border-radius:12px; background:#0d1c30; }
+      .account-summary svg { width:30px; height:30px; color:#38bdf8; }
+      .settings-actions { display:flex; justify-content:space-between; gap:12px; margin-top:18px; flex-wrap:wrap; }
+      .header-settings.active { color:#fff; background:#183652; border-color:#38bdf8; }
+      .floating-settings-button { position:fixed; top:18px; right:18px; z-index:99999; width:52px; height:52px; min-width:52px; padding:0 !important; border-radius:50%; display:flex; align-items:center; justify-content:center; background:#38bdf8 !important; color:#06111f !important; border:2px solid #d8f4ff !important; box-shadow:0 8px 28px rgba(0,0,0,.45), 0 0 0 4px rgba(56,189,248,.18); cursor:pointer; }
+      .floating-settings-button:hover { transform:rotate(20deg) scale(1.06); }
+      .floating-settings-button svg { width:28px; height:28px; stroke-width:2.5; }
+      .floating-settings-button.active { background:#ffffff !important; color:#0c1b2f !important; }
+      header .header-actions { padding-right:70px; }
+      @media (max-width:700px) { .floating-settings-button { top:12px; right:12px; width:46px; height:46px; min-width:46px; } header .header-actions { padding-right:58px; } }
       @media (max-width:1100px) {
         .compact-kpis { grid-template-columns:repeat(3,minmax(0,1fr)) !important; }
         .dashboard-wide-grid { grid-template-columns:repeat(2,minmax(0,1fr)) !important; }
@@ -980,9 +977,12 @@ export default function App() {
         .dashboard-wide-grid .chart, .dashboard-wide-grid .chart.tall { height:270px; }
         .category-table-grid { grid-template-columns:1fr !important; }
         .dashboard-subtabs button { flex:1 1 100%; justify-content:center; }
+        .account-settings-grid { grid-template-columns:1fr; }
+        .account-settings .full-row { grid-column:1; }
       }
     `}</style>
-    <header><div className="brand"><div className="brand-icon"><WalletCards /></div><div><b>Mis Finanzas</b><small>Información sincronizada y siempre disponible</small></div></div><div className="header-actions"><button className="secondary" onClick={() => openNew('income')}><ArrowUpCircle /> Ingreso</button><button onClick={() => openNew('expense')}><ArrowDownCircle /> Egreso</button>{configured && <button className={`ghost gear-button ${tab === 'settings' ? 'active' : ''}`} onClick={() => setTab('settings')} title="Configuración de la cuenta" aria-label="Abrir configuración"><Settings2 /></button>}</div></header>
+    <button className={`floating-settings-button ${tab === 'settings' ? 'active' : ''}`} onClick={() => setTab('settings')} title="Configuración" aria-label="Abrir configuración"><Settings /></button>
+    <header><div className="brand"><div className="brand-icon"><WalletCards /></div><div><b>Mis Finanzas</b><small>Información sincronizada y siempre disponible</small></div></div><div className="header-actions"><button className="secondary" onClick={() => openNew('income')}><ArrowUpCircle /> Ingreso</button><button onClick={() => openNew('expense')}><ArrowDownCircle /> Egreso</button>{configured && <button className="ghost" onClick={() => supabase.auth.signOut()} title="Cerrar sesión" aria-label="Cerrar sesión"><LogOut /></button>}</div></header>
     <nav className="tabs">
       <button className={tab === 'analysis' ? 'active' : ''} onClick={() => setTab('analysis')}><CircleDollarSign /> ANÁLISIS DE FINANZAS</button>
       <button className={tab === 'big-expenses' ? 'active' : ''} onClick={() => setTab('big-expenses')}><ReceiptText /> GRANDES GASTOS</button>
@@ -1004,100 +1004,6 @@ export default function App() {
         {tab === 'dashboard' && <small className="period-note"><CalendarDays /> Todos los indicadores corresponden al mes seleccionado</small>}
         {tab === 'analysis' && <small className="period-note"><CalendarDays /> Análisis histórico de todos los movimientos disponibles</small>}
       </div>
-
-      {tab === 'settings' && <section className="settings-page">
-        <article className="panel settings-card">
-          <div className="settings-hero">
-            <div className="settings-hero-icon"><Settings2 /></div>
-            <div>
-              <h2>Configuración de la cuenta</h2>
-              <p>Administrar la contraseña y la sesión de acceso.</p>
-            </div>
-          </div>
-        </article>
-
-        <div className="settings-grid">
-          <article className="panel settings-card">
-            <h3>Datos de la cuenta</h3>
-            <p>Correo utilizado para iniciar sesión en la aplicación.</p>
-            <div className="settings-email">
-              <span>Correo electrónico</span>
-              <b>{session?.user?.email || 'Sin correo disponible'}</b>
-            </div>
-          </article>
-
-          <article className="panel settings-card">
-            <h3>Sesión</h3>
-            <p>Cerrar la sesión actual en este dispositivo. Los datos permanecerán guardados en Supabase.</p>
-            <div className="settings-actions">
-              <button className="danger" type="button" onClick={signOut}>
-                <LogOut /> Cerrar sesión
-              </button>
-            </div>
-          </article>
-        </div>
-
-        <article className="panel settings-card">
-          <h3>Cambiar contraseña</h3>
-          <p>La nueva contraseña reemplazará a la actual para los próximos inicios de sesión.</p>
-
-          <form className="settings-form" onSubmit={changePassword}>
-            <label>
-              Nueva contraseña
-              <div className="password-field">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={passwordForm.password}
-                  onChange={e => setPasswordForm(current => ({ ...current, password: e.target.value }))}
-                  placeholder="Mínimo 6 caracteres"
-                  minLength={6}
-                  autoComplete="new-password"
-                  required
-                />
-                <button
-                  className="ghost password-toggle"
-                  type="button"
-                  onClick={() => setShowPassword(value => !value)}
-                  title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                  aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                >
-                  {showPassword ? <EyeOff /> : <Eye />}
-                </button>
-              </div>
-            </label>
-
-            <label>
-              Repetir nueva contraseña
-              <div className="password-field">
-                <input
-                  type={showConfirmPassword ? 'text' : 'password'}
-                  value={passwordForm.confirmPassword}
-                  onChange={e => setPasswordForm(current => ({ ...current, confirmPassword: e.target.value }))}
-                  placeholder="Repetir contraseña"
-                  minLength={6}
-                  autoComplete="new-password"
-                  required
-                />
-                <button
-                  className="ghost password-toggle"
-                  type="button"
-                  onClick={() => setShowConfirmPassword(value => !value)}
-                  title={showConfirmPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                  aria-label={showConfirmPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                >
-                  {showConfirmPassword ? <EyeOff /> : <Eye />}
-                </button>
-              </div>
-            </label>
-
-            <div className="settings-actions">
-              <button type="submit" disabled={passwordBusy}>
-                {passwordBusy ? <><RefreshCw className="spin" /> Actualizando…</> : <><Settings2 /> Actualizar contraseña</>}
-              </button>
-            </div>
-          </form>
-        </article>
-      </section>}
 
       {tab === 'analysis' && <>
         <section className="kpis extended" style={{"--card-cursor":"help"}}>
@@ -1534,6 +1440,39 @@ export default function App() {
 
       {tab === 'income' && <TransactionsTable rows={incomeRows} title="Ingresos" type="income" search={search} setSearch={setSearch} onEdit={m => { setEditing(m); setNewType('income'); setModal(true) }} onDelete={remove} />}
       {tab === 'expense' && <TransactionsTable rows={expenseRows} title="Egresos" type="expense" search={search} setSearch={setSearch} onEdit={m => { setEditing(m); setNewType('expense'); setModal(true) }} onDelete={remove} />}
+
+      {tab === 'settings' && <section className="panel account-settings">
+        <div className="panel-title">
+          <div><h3>Configuración de cuenta</h3><span>Administrar los datos de acceso y la sesión actual</span></div>
+        </div>
+        <div className="account-summary">
+          <UserRound />
+          <div><b>{profileName || 'Usuario'}</b><small>{session?.user?.email || 'Sin correo disponible'}</small></div>
+        </div>
+        <form onSubmit={saveAccountSettings}>
+          <div className="account-settings-grid">
+            <label className="full-row">Nombre
+              <input value={profileName} onChange={e => setProfileName(e.target.value)} placeholder="Nombre del usuario" autoComplete="name" />
+            </label>
+            <label>Nueva contraseña
+              <div className="password-field">
+                <input type={showPassword ? 'text' : 'password'} value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="Mínimo 6 caracteres" minLength={6} autoComplete="new-password" />
+                <button className="ghost password-toggle" type="button" onClick={() => setShowPassword(v => !v)} title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'} aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}>{showPassword ? <EyeOff /> : <Eye />}</button>
+              </div>
+            </label>
+            <label>Repetir nueva contraseña
+              <div className="password-field">
+                <input type={showPassword ? 'text' : 'password'} value={repeatPassword} onChange={e => setRepeatPassword(e.target.value)} placeholder="Repetir contraseña" minLength={6} autoComplete="new-password" />
+                <button className="ghost password-toggle" type="button" onClick={() => setShowPassword(v => !v)} title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'} aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}>{showPassword ? <EyeOff /> : <Eye />}</button>
+              </div>
+            </label>
+          </div>
+          <div className="settings-actions">
+            <button className="ghost danger" type="button" onClick={() => supabase.auth.signOut()}><LogOut /> Cerrar sesión</button>
+            <button type="submit" disabled={savingAccount}>{savingAccount ? <><RefreshCw className="spin" /> Guardando…</> : <><Settings2 /> Guardar cambios</>}</button>
+          </div>
+        </form>
+      </section>}
 
       {tab === 'control' && <section className="panel control-card"><div className="section-icon"><FolderCog /></div><h2>Control de categorías</h2><p>Las categorías de ingresos y egresos se administran por separado y aparecen automáticamente en los formularios de carga.</p><CategoryForm onAdd={addCategory} /><div className="category-columns"><div><h3>Ingresos ({categories.filter(c => c.type === 'income').length})</h3>{categories.filter(c => c.type === 'income').map(c => <div className="category-row" key={c.id}><span>{c.name}</span><button className="ghost danger" onClick={() => removeCategory(c)}><Trash2 /></button></div>)}</div><div><h3>Egresos ({categories.filter(c => c.type === 'expense').length})</h3>{categories.filter(c => c.type === 'expense').map(c => <div className="category-row" key={c.id}><span>{c.name}</span><button className="ghost danger" onClick={() => removeCategory(c)}><Trash2 /></button></div>)}</div></div></section>}
     </main>
