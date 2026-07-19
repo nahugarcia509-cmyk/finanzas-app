@@ -105,10 +105,10 @@ function GeneralBalanceTable({ openingBalance, incomeByCategory, expenseByCatego
 function ChartInfoTitle({ title, text }) {
   return <div className="chart-title-row">
     <h3>{title}</h3>
-    <span className="chart-help" tabIndex={0} aria-label={`Explicación de ${title}`}>
+    <button type="button" className="chart-help" aria-label={`Explicación de ${title}`} title="Ver explicación">
       <HelpCircle />
       <span className="chart-help-tooltip">{text}</span>
-    </span>
+    </button>
   </div>
 }
 
@@ -130,7 +130,9 @@ export default function App() {
   const [dashboardView, setDashboardView] = useState('overview')
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
-  const [filters, setFilters] = useState({ dateFrom: '', dateTo: '', category: 'all', minAmount: '', maxAmount: '' })
+  const emptyFilters = { dateFrom: '', dateTo: '', category: 'all', minAmount: '', maxAmount: '' }
+  const [filters, setFilters] = useState(emptyFilters)
+  const [filterDraft, setFilterDraft] = useState(emptyFilters)
   const [comparisonMonth, setComparisonMonth] = useState(() => {
     const [y,m] = monthKey().split('-').map(Number)
     return `${m === 1 ? y-1 : y}-${String(m === 1 ? 12 : m-1).padStart(2,'0')}`
@@ -1013,10 +1015,12 @@ export default function App() {
       .app-content { flex:1; min-width:0; }
       .chart-title-row { display:flex; align-items:center; gap:8px; }
       .chart-title-row h3 { margin:0; }
-      .chart-help { position:relative; display:inline-flex; align-items:center; justify-content:center; color:#8fb0d3; cursor:help; outline:none; }
+      .chart-help { position:relative; display:inline-flex; align-items:center; justify-content:center; color:#8fb0d3; cursor:help; outline:none; border:0; background:transparent; padding:0; min-width:20px; overflow:visible; }
       .chart-help > svg { width:18px; height:18px; }
       .chart-help-tooltip { position:absolute; z-index:1000; left:50%; top:calc(100% + 10px); transform:translateX(-50%); width:min(330px,72vw); padding:12px 14px; border-radius:10px; border:1px solid #3a5878; background:#071524; color:#e8f2ff; font-size:12px; line-height:1.5; box-shadow:0 12px 35px rgba(0,0,0,.45); opacity:0; visibility:hidden; pointer-events:none; transition:opacity .15s ease, visibility .15s ease; }
-      .chart-help:hover .chart-help-tooltip, .chart-help:focus .chart-help-tooltip { opacity:1; visibility:visible; }
+      .chart-help:hover .chart-help-tooltip, .chart-help:focus .chart-help-tooltip, .chart-help:focus-visible .chart-help-tooltip { opacity:1; visibility:visible; }
+      .home-grid .panel, .home-grid .panel-title, .chart-title-row { overflow:visible !important; }
+      .chart-help-tooltip::before { content:''; position:absolute; top:-6px; left:50%; width:10px; height:10px; background:#071524; border-left:1px solid #3a5878; border-top:1px solid #3a5878; transform:translateX(-50%) rotate(45deg); }
       @media (max-width:850px) { .side-nav { position:fixed; left:0; top:76px; bottom:0; z-index:9990; box-shadow:12px 0 30px rgba(0,0,0,.35); } .side-nav.collapsed { width:68px; flex-basis:68px; } .app-shell { padding-left:68px; } }
       .account-settings { max-width:760px; margin:0 auto; }
       .account-settings-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
@@ -1063,7 +1067,10 @@ export default function App() {
       .theme-gray { --accent:#94a3b8; --accent-soft:#273244; }
       .side-menu button.active, .monthly-toggle.open { border-color:var(--accent)!important; color:#fff!important; background:var(--accent-soft)!important; }
       .floating-settings-button.active, .header-icon.active { background:var(--accent)!important; }
-      .header-icon { width:42px;height:42px;padding:0;border-radius:12px;display:grid;place-items:center; }
+      .header-icon { width:42px;height:42px;padding:0;border-radius:12px;display:grid;place-items:center;position:relative; }
+      .filter-dot { position:absolute;right:6px;top:6px;width:8px;height:8px;border-radius:50%;background:#f59e0b;box-shadow:0 0 0 2px #09172a; }
+      .drawer-actions { display:flex;justify-content:space-between;gap:10px;margin-top:22px;padding-top:18px;border-top:1px solid #29405c; }
+      .drawer-actions button { flex:1;justify-content:center; }
       .overlay-panel { position:fixed;inset:0;background:#020817aa;z-index:100001;display:flex;justify-content:flex-end; }
       .drawer { width:min(430px,94vw);height:100%;background:#09172a;border-left:1px solid #29405c;padding:22px;overflow:auto;box-shadow:-20px 0 60px #0008; }
       .drawer-head { display:flex;align-items:center;justify-content:space-between;margin-bottom:20px; }
@@ -1085,13 +1092,40 @@ export default function App() {
       .sankey-flow { display:grid;grid-template-columns:1fr auto 1fr auto 1fr;align-items:center;gap:12px;min-height:210px; }
       .flow-node { border:1px solid #29405c;border-radius:14px;padding:18px;background:#0d1c30;text-align:center; }.flow-node strong{font-size:22px;display:block;margin-top:8px}.flow-arrow{font-size:30px;color:var(--accent)}
       .comparison-grid { display:grid;grid-template-columns:repeat(3,1fr);gap:12px; }.comparison-card{border:1px solid #29405c;border-radius:12px;padding:14px;background:#0d1c30}.comparison-card strong{font-size:20px;display:block;margin:7px 0}
-      .category-panel-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px; }.category-panel-card{border:1px solid #29405c;border-radius:12px;padding:14px;background:#0d1c30}.category-panel-card header{display:flex;justify-content:space-between;gap:10px}.category-progress{height:8px;background:#17283d;border-radius:99px;overflow:hidden;margin-top:10px}.category-progress div{height:100%;background:var(--accent)}
+      .category-panel-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px; }.category-panel-card{border:1px solid #29405c;border-radius:12px;padding:14px;background:#0d1c30;overflow:hidden;position:relative}.category-panel-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--card-color,var(--accent))}.category-panel-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;min-width:0}.category-panel-head b{overflow-wrap:anywhere}.category-panel-head strong{white-space:nowrap;color:var(--card-color,var(--accent))}.category-progress{height:8px;background:#17283d;border-radius:99px;overflow:hidden;margin-top:10px}.category-progress div{height:100%;background:var(--card-color,var(--accent))}.category-color-0{--card-color:#38bdf8}.category-color-1{--card-color:#4ade80}.category-color-2{--card-color:#f59e0b}.category-color-3{--card-color:#fb7185}.category-color-4{--card-color:#a78bfa}.category-color-5{--card-color:#22d3ee}
       .theme-picker { display:grid;grid-template-columns:repeat(5,1fr);gap:10px; }.theme-option{height:54px;border-radius:12px;border:2px solid transparent}.theme-option.active{border-color:#fff;transform:scale(1.04)}.theme-blue-btn{background:#38bdf8}.theme-green-btn{background:#4ade80}.theme-purple-btn{background:#a78bfa}.theme-orange-btn{background:#f59e0b}.theme-gray-btn{background:#94a3b8}
       .shortcut-grid { display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.shortcut{display:flex;align-items:center;justify-content:space-between;border:1px solid #29405c;border-radius:10px;padding:10px}.shortcut kbd{background:#17283d;border:1px solid #3a526e;border-radius:6px;padding:4px 8px}
+      .entry-grid .entry-card { min-width:0; }
+      .entry-card .category-form { display:grid !important;grid-template-columns:minmax(150px,.9fr) minmax(150px,.9fr) minmax(170px,1fr) minmax(220px,1.4fr) auto;gap:10px;align-items:end;width:100%; }
+      .entry-card .category-form label { min-width:0; }
+      .entry-card .category-form input,.entry-card .category-form select { width:100%;min-width:0; }
+      .entry-card .category-form button { white-space:normal;min-height:42px;justify-content:center; }
+      .home-grid>.panel:nth-child(1){border-top:3px solid #38bdf8}.home-grid>.panel:nth-child(2){border-top:3px solid #4ade80}.home-grid>.panel:nth-child(3){border-top:3px solid #f59e0b}.home-grid>.panel:nth-child(4){border-top:3px solid #a78bfa}.home-grid>.panel:nth-child(5){border-top:3px solid #fb7185}.home-grid>.panel:nth-child(6){border-top:3px solid #22d3ee}
+      @media(max-width:1250px){.entry-card .category-form{grid-template-columns:repeat(2,minmax(0,1fr))}.entry-card .category-form button{grid-column:1/-1}}
       @media(max-width:900px){.home-grid>.panel,.home-grid>.third{grid-column:1/-1}.sankey-flow{grid-template-columns:1fr}.flow-arrow{transform:rotate(90deg)}.comparison-grid{grid-template-columns:1fr}.filter-grid{grid-template-columns:1fr}.filter-grid .full{grid-column:1}.calendar-day{min-height:70px}.home-hero{align-items:flex-start;flex-direction:column}}
     `}</style>
     <button className={`floating-settings-button ${tab === 'settings' ? 'active' : ''}`} onClick={() => setTab('settings')} title="Configuración" aria-label="Abrir configuración"><Settings /></button>
-    <header><div className="brand"><div className="brand-icon"><WalletCards /></div><div><b>Mis Finanzas</b><small>Información sincronizada y siempre disponible</small></div></div><div className="header-actions"><button className={`ghost header-icon ${filtersOpen ? 'active' : ''}`} onClick={() => setFiltersOpen(true)} title="Filtros"><SlidersHorizontal /></button><button className={`ghost header-icon ${notificationsOpen ? 'active' : ''}`} onClick={() => setNotificationsOpen(true)} title="Notificaciones"><Bell />{notifications.length > 0 && <span className="notification-badge">{notifications.length}</span>}</button><button className="secondary" onClick={() => openNew('income')}><ArrowUpCircle /> Ingreso</button><button onClick={() => openNew('expense')}><ArrowDownCircle /> Egreso</button>{configured && <button className="ghost" onClick={() => supabase.auth.signOut()} title="Cerrar sesión" aria-label="Cerrar sesión"><LogOut /></button>}</div></header>
+    <header><div className="brand"><div className="brand-icon"><WalletCards /></div><div><b>Mis Finanzas</b><small>Información sincronizada y siempre disponible</small></div></div><div className="header-actions"><button className={`ghost header-icon ${filtersOpen || Object.values(filters).some(v => v && v !== 'all') ? 'active' : ''}`} onClick={() => { setFilterDraft(filters); setFiltersOpen(true) }} title="Filtros"><SlidersHorizontal />{Object.values(filters).some(v => v && v !== 'all') && <span className="filter-dot" />}</button><button className={`ghost header-icon ${notificationsOpen ? 'active' : ''}`} onClick={() => setNotificationsOpen(true)} title="Notificaciones"><Bell />{notifications.length > 0 && <span className="notification-badge">{notifications.length}</span>}</button><button className="secondary" onClick={() => openNew('income')}><ArrowUpCircle /> Ingreso</button><button onClick={() => openNew('expense')}><ArrowDownCircle /> Egreso</button>{configured && <button className="ghost" onClick={() => supabase.auth.signOut()} title="Cerrar sesión" aria-label="Cerrar sesión"><LogOut /></button>}</div></header>
+    {filtersOpen && <div className="overlay-panel" onMouseDown={() => setFiltersOpen(false)}>
+      <aside className="drawer" onMouseDown={e => e.stopPropagation()}>
+        <div className="drawer-head"><div><h2>Filtros</h2><small>Aplicar filtros a los movimientos del mes seleccionado</small></div><button className="ghost" onClick={() => setFiltersOpen(false)}><X /></button></div>
+        <div className="filter-grid">
+          <label>Fecha desde<input type="date" value={filterDraft.dateFrom} onChange={e => setFilterDraft({...filterDraft,dateFrom:e.target.value})}/></label>
+          <label>Fecha hasta<input type="date" value={filterDraft.dateTo} onChange={e => setFilterDraft({...filterDraft,dateTo:e.target.value})}/></label>
+          <label className="full">Categoría<select value={filterDraft.category} onChange={e => setFilterDraft({...filterDraft,category:e.target.value})}><option value="all">Todas las categorías</option>{allCategoryNames.map(name=><option key={name} value={name}>{name}</option>)}</select></label>
+          <label>Monto mínimo<input type="number" min="0" step="0.01" value={filterDraft.minAmount} onChange={e => setFilterDraft({...filterDraft,minAmount:e.target.value})} placeholder="0"/></label>
+          <label>Monto máximo<input type="number" min="0" step="0.01" value={filterDraft.maxAmount} onChange={e => setFilterDraft({...filterDraft,maxAmount:e.target.value})} placeholder="Sin límite"/></label>
+        </div>
+        <div className="drawer-actions"><button className="ghost" type="button" onClick={() => { setFilterDraft(emptyFilters); setFilters(emptyFilters); setFiltersOpen(false) }}>Limpiar filtros</button><button type="button" onClick={() => { setFilters(filterDraft); setFiltersOpen(false) }}>Aplicar filtros</button></div>
+      </aside>
+    </div>}
+    {notificationsOpen && <div className="overlay-panel" onMouseDown={() => setNotificationsOpen(false)}>
+      <aside className="drawer" onMouseDown={e => e.stopPropagation()}>
+        <div className="drawer-head"><div><h2>Notificaciones</h2><small>{notifications.length} avisos financieros</small></div><button className="ghost" onClick={() => setNotificationsOpen(false)}><X /></button></div>
+        {notifications.map((item,index)=><div className={`notification-item ${item.type || 'info'}`} key={`${item.title || 'aviso'}-${index}`}><b>{item.title || 'Aviso'}</b><p>{item.text || item.message}</p></div>)}
+        {!notifications.length && <div className="empty-card">No existen notificaciones pendientes.</div>}
+      </aside>
+    </div>}
     <div className="app-shell">
       <aside className={`side-nav ${sidebarOpen ? '' : 'collapsed'}`}>
         <div className="side-nav-top"><button className="ghost side-toggle" onClick={() => setSidebarOpen(v => !v)} title={sidebarOpen ? 'Ocultar barra lateral' : 'Mostrar barra lateral'}><Menu /></button></div>
@@ -1142,7 +1176,7 @@ export default function App() {
           <article className="panel wide"><div className="panel-title"><div><ChartInfoTitle title="Comparador mensual" text="Compara ingresos, egresos y resultado neto del mes seleccionado contra otro mes."/><span>Mes actual frente al período elegido</span></div><input type="month" value={comparisonMonth} onChange={e=>setComparisonMonth(e.target.value)}/></div><div className="comparison-grid"><div className="comparison-card"><span>Ingresos</span><strong>{money(income)}</strong><small>{previousIncome ? `${((income/previousIncome-1)*100).toFixed(1)}% vs ${comparisonMonth}` : 'Sin base comparable'}</small></div><div className="comparison-card"><span>Egresos</span><strong>{money(expenseWithoutSavings)}</strong><small>{previousExpense ? `${((expenseWithoutSavings/previousExpense-1)*100).toFixed(1)}% vs ${comparisonMonth}` : 'Sin base comparable'}</small></div><div className="comparison-card"><span>Resultado neto</span><strong>{money(income-expenseWithoutSavings)}</strong><small>Anterior: {money(previousIncome-previousExpense)}</small></div></div></article>
           <article className="panel wide"><div className="panel-title"><div><ChartInfoTitle title="Calendario financiero" text="Muestra por día los ingresos, egresos y aportes de ahorro del mes seleccionado."/><span>{month}</span></div></div><div className="calendar-grid">{['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'].map(d=><div className="calendar-head" key={d}>{d}</div>)}{Array.from({length:calendarDays.first}).map((_,i)=><div className="calendar-day empty" key={`e${i}`}/>) }{Array.from({length:calendarDays.days},(_,i)=>i+1).map(d=>{const v=calendarDays.map[d]||{};return <div className="calendar-day" key={d}><b>{d}</b>{v.income>0&&<span className="calendar-value income">+ {money(v.income)}</span>}{v.expense>0&&<span className="calendar-value expense">- {money(v.expense)}</span>}{v.savings>0&&<span className="calendar-value savings">Ahorro {money(v.savings)}</span>}</div>})}</div></article>
           <article className="panel wide"><div className="panel-title"><div><ChartInfoTitle title="Flujo del dinero" text="Representa cómo los ingresos disponibles se distribuyen entre gastos, ahorros y saldo restante."/><span>Vista tipo Sankey simplificada</span></div></div><div className="sankey-flow"><div className="flow-node"><span>Ingresos</span><strong className="positive">{money(income)}</strong></div><div className="flow-arrow">→</div><div className="flow-node"><span>Dinero disponible</span><strong>{money(openingBalance+income)}</strong></div><div className="flow-arrow">→</div><div><div className="flow-node"><span>Gastos</span><strong className="negative">{money(expenseWithoutSavings)}</strong></div><div className="flow-node"><span>Ahorros</span><strong>{money(monthlySavingsDeposits)}</strong></div><div className="flow-node"><span>Saldo</span><strong className={closingBalance>=0?'positive':'negative'}>{money(closingBalance)}</strong></div></div></div></article>
-          <article className="panel wide"><div className="panel-title"><div><ChartInfoTitle title="Panel de categorías" text="Ordena las categorías por gasto y muestra el peso relativo de cada una dentro del total mensual."/><span>Distribución del gasto mensual</span></div></div><div className="category-panel-grid">{byCategory.map(x=><div className="category-panel-card" key={x.name}><header><b>{x.name}</b><strong>{money(x.value)}</strong></header><small>{expenseWithoutSavings?((x.value/expenseWithoutSavings)*100).toFixed(1):0}% del gasto</small><div className="category-progress"><div style={{width:`${expenseWithoutSavings?Math.min(x.value/expenseWithoutSavings*100,100):0}%`}}/></div></div>)}</div></article>
+          <article className="panel wide"><div className="panel-title"><div><ChartInfoTitle title="Panel de categorías" text="Ordena las categorías por gasto y muestra el peso relativo de cada una dentro del total mensual."/><span>Distribución del gasto mensual</span></div></div><div className="category-panel-grid">{byCategory.map((x,i)=><div className={`category-panel-card category-color-${i%6}`} key={x.name}><div className="category-panel-head"><b>{x.name}</b><strong>{money(x.value)}</strong></div><small>{expenseWithoutSavings?((x.value/expenseWithoutSavings)*100).toFixed(1):0}% del gasto</small><div className="category-progress"><div style={{width:`${expenseWithoutSavings?Math.min(x.value/expenseWithoutSavings*100,100):0}%`}}/></div></div>)}</div></article>
         </section>
       </>}
 
