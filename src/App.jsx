@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   ArrowDownCircle, ArrowUpCircle, CalendarDays, CircleDollarSign, FolderCog,
   LayoutDashboard, LogOut, Pencil, Plus, RefreshCw, Search, Settings2, Trash2,
-  TrendingDown, TrendingUp, WalletCards, PiggyBank, ReceiptText, Download, Upload
+  TrendingDown, TrendingUp, WalletCards, PiggyBank, ReceiptText, Download, Upload,
+  Eye, EyeOff
 } from 'lucide-react'
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie,
@@ -114,6 +115,10 @@ export default function App() {
   const [editing, setEditing] = useState(null)
   const [notice, setNotice] = useState('')
   const [tab, setTab] = useState('dashboard')
+  const [passwordForm, setPasswordForm] = useState({ password: '', confirmPassword: '' })
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [passwordBusy, setPasswordBusy] = useState(false)
   const [dashboardView, setDashboardView] = useState('overview')
   const [selectedReserveCategories, setSelectedReserveCategories] = useState(() => {
     try {
@@ -414,6 +419,53 @@ export default function App() {
     }
     const { error } = await supabase.from('categories').delete().eq('id', cat.id)
     if (error) setNotice(error.message); else loadAll()
+  }
+
+  const changePassword = async (e) => {
+    e.preventDefault()
+
+    if (!configured || !supabase) {
+      setNotice('La aplicación no está conectada con Supabase.')
+      return
+    }
+
+    const password = passwordForm.password
+    const confirmPassword = passwordForm.confirmPassword
+
+    if (password.length < 6) {
+      setNotice('La nueva contraseña debe tener al menos 6 caracteres.')
+      return
+    }
+
+    if (password !== confirmPassword) {
+      setNotice('Las contraseñas no coinciden.')
+      return
+    }
+
+    setPasswordBusy(true)
+    setNotice('')
+
+    try {
+      const { error } = await supabase.auth.updateUser({ password })
+      if (error) throw error
+
+      setPasswordForm({ password: '', confirmPassword: '' })
+      setShowPassword(false)
+      setShowConfirmPassword(false)
+      setNotice('Contraseña actualizada correctamente.')
+    } catch (error) {
+      setNotice(error?.message || 'No se pudo actualizar la contraseña.')
+    } finally {
+      setPasswordBusy(false)
+    }
+  }
+
+  const signOut = async () => {
+    if (!configured || !supabase) return
+
+    setNotice('')
+    const { error } = await supabase.auth.signOut()
+    if (error) setNotice(error.message)
   }
 
   const DATA_START = '2026-04'
@@ -870,6 +922,28 @@ export default function App() {
       .goal-actions button { padding:6px; min-width:32px; }
       @media (max-width:1000px) { .goal-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
       @media (max-width:650px) { .goal-grid { grid-template-columns:1fr; } }
+      .settings-page { max-width:900px; margin:0 auto; display:grid; gap:16px; }
+      .settings-hero { display:flex; align-items:center; gap:14px; }
+      .settings-hero-icon { width:48px; height:48px; border-radius:14px; display:grid; place-items:center; background:#183652; color:#38bdf8; flex:0 0 auto; }
+      .settings-hero-icon svg { width:25px; height:25px; }
+      .settings-hero h2 { margin:0 0 4px; }
+      .settings-hero p { margin:0; color:#8aa7c7; }
+      .settings-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+      .settings-card { padding:20px; }
+      .settings-card h3 { margin:0 0 6px; }
+      .settings-card > p { margin:0 0 18px; color:#8aa7c7; line-height:1.5; }
+      .settings-form { display:grid; gap:14px; }
+      .settings-form label { display:grid; gap:7px; color:#b8c8d9; font-size:13px; font-weight:700; }
+      .password-field { position:relative; }
+      .password-field input { width:100%; padding-right:46px; }
+      .password-toggle { position:absolute; right:6px; top:50%; transform:translateY(-50%); width:36px; height:36px; padding:0; display:grid; place-items:center; border-radius:9px; }
+      .password-toggle svg { width:18px; height:18px; }
+      .settings-email { display:flex; justify-content:space-between; gap:12px; align-items:center; padding:12px 14px; border:1px solid #29405c; border-radius:11px; background:#0c1b2f; }
+      .settings-email span { color:#8aa7c7; font-size:12px; }
+      .settings-email b { overflow-wrap:anywhere; text-align:right; }
+      .settings-actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:4px; }
+      .gear-button.active { color:#fff; background:#183652; border-color:#38bdf8; }
+      @media (max-width:750px) { .settings-grid { grid-template-columns:1fr; } }
     `}</style>
     <style>{`
       .app, .app * { box-sizing: border-box; }
@@ -908,7 +982,7 @@ export default function App() {
         .dashboard-subtabs button { flex:1 1 100%; justify-content:center; }
       }
     `}</style>
-    <header><div className="brand"><div className="brand-icon"><WalletCards /></div><div><b>Mis Finanzas</b><small>Información sincronizada y siempre disponible</small></div></div><div className="header-actions"><button className="secondary" onClick={() => openNew('income')}><ArrowUpCircle /> Ingreso</button><button onClick={() => openNew('expense')}><ArrowDownCircle /> Egreso</button>{configured && <button className="ghost" onClick={() => supabase.auth.signOut()}><LogOut /></button>}</div></header>
+    <header><div className="brand"><div className="brand-icon"><WalletCards /></div><div><b>Mis Finanzas</b><small>Información sincronizada y siempre disponible</small></div></div><div className="header-actions"><button className="secondary" onClick={() => openNew('income')}><ArrowUpCircle /> Ingreso</button><button onClick={() => openNew('expense')}><ArrowDownCircle /> Egreso</button>{configured && <button className={`ghost gear-button ${tab === 'settings' ? 'active' : ''}`} onClick={() => setTab('settings')} title="Configuración de la cuenta" aria-label="Abrir configuración"><Settings2 /></button>}</div></header>
     <nav className="tabs">
       <button className={tab === 'analysis' ? 'active' : ''} onClick={() => setTab('analysis')}><CircleDollarSign /> ANÁLISIS DE FINANZAS</button>
       <button className={tab === 'big-expenses' ? 'active' : ''} onClick={() => setTab('big-expenses')}><ReceiptText /> GRANDES GASTOS</button>
@@ -924,12 +998,106 @@ export default function App() {
       <div className="toolbar">
         {tab === 'analysis'
           ? <label>Período analizado <strong>{analysisMonths[0] || DATA_START} a {analysisMonths.at(-1) || DATA_START}</strong></label>
-          : tab === 'big-expenses' || tab === 'savings'
+          : tab === 'big-expenses' || tab === 'savings' || tab === 'settings'
             ? <span></span>
             : <label>Período <input type="month" value={month} onChange={e => setMonth(e.target.value)} /></label>}
         {tab === 'dashboard' && <small className="period-note"><CalendarDays /> Todos los indicadores corresponden al mes seleccionado</small>}
         {tab === 'analysis' && <small className="period-note"><CalendarDays /> Análisis histórico de todos los movimientos disponibles</small>}
       </div>
+
+      {tab === 'settings' && <section className="settings-page">
+        <article className="panel settings-card">
+          <div className="settings-hero">
+            <div className="settings-hero-icon"><Settings2 /></div>
+            <div>
+              <h2>Configuración de la cuenta</h2>
+              <p>Administrar la contraseña y la sesión de acceso.</p>
+            </div>
+          </div>
+        </article>
+
+        <div className="settings-grid">
+          <article className="panel settings-card">
+            <h3>Datos de la cuenta</h3>
+            <p>Correo utilizado para iniciar sesión en la aplicación.</p>
+            <div className="settings-email">
+              <span>Correo electrónico</span>
+              <b>{session?.user?.email || 'Sin correo disponible'}</b>
+            </div>
+          </article>
+
+          <article className="panel settings-card">
+            <h3>Sesión</h3>
+            <p>Cerrar la sesión actual en este dispositivo. Los datos permanecerán guardados en Supabase.</p>
+            <div className="settings-actions">
+              <button className="danger" type="button" onClick={signOut}>
+                <LogOut /> Cerrar sesión
+              </button>
+            </div>
+          </article>
+        </div>
+
+        <article className="panel settings-card">
+          <h3>Cambiar contraseña</h3>
+          <p>La nueva contraseña reemplazará a la actual para los próximos inicios de sesión.</p>
+
+          <form className="settings-form" onSubmit={changePassword}>
+            <label>
+              Nueva contraseña
+              <div className="password-field">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={passwordForm.password}
+                  onChange={e => setPasswordForm(current => ({ ...current, password: e.target.value }))}
+                  placeholder="Mínimo 6 caracteres"
+                  minLength={6}
+                  autoComplete="new-password"
+                  required
+                />
+                <button
+                  className="ghost password-toggle"
+                  type="button"
+                  onClick={() => setShowPassword(value => !value)}
+                  title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                >
+                  {showPassword ? <EyeOff /> : <Eye />}
+                </button>
+              </div>
+            </label>
+
+            <label>
+              Repetir nueva contraseña
+              <div className="password-field">
+                <input
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  value={passwordForm.confirmPassword}
+                  onChange={e => setPasswordForm(current => ({ ...current, confirmPassword: e.target.value }))}
+                  placeholder="Repetir contraseña"
+                  minLength={6}
+                  autoComplete="new-password"
+                  required
+                />
+                <button
+                  className="ghost password-toggle"
+                  type="button"
+                  onClick={() => setShowConfirmPassword(value => !value)}
+                  title={showConfirmPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  aria-label={showConfirmPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                >
+                  {showConfirmPassword ? <EyeOff /> : <Eye />}
+                </button>
+              </div>
+            </label>
+
+            <div className="settings-actions">
+              <button type="submit" disabled={passwordBusy}>
+                {passwordBusy ? <><RefreshCw className="spin" /> Actualizando…</> : <><Settings2 /> Actualizar contraseña</>}
+              </button>
+            </div>
+          </form>
+        </article>
+      </section>}
 
       {tab === 'analysis' && <>
         <section className="kpis extended" style={{"--card-cursor":"help"}}>
