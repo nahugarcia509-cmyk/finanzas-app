@@ -3,7 +3,7 @@ import {
   ArrowDownCircle, ArrowUpCircle, CalendarDays, CircleDollarSign, FolderCog,
   LayoutDashboard, LogOut, Pencil, Plus, RefreshCw, Search, Settings, Settings2, Trash2,
   TrendingDown, TrendingUp, WalletCards, PiggyBank, ReceiptText, Download, Upload,
-  Eye, EyeOff, UserRound, Menu, ChevronDown, HelpCircle
+  Eye, EyeOff, UserRound, Menu, ChevronDown, HelpCircle, Bell, Home, SlidersHorizontal, Keyboard, Palette, Target, CalendarRange, X
 } from 'lucide-react'
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie,
@@ -124,10 +124,18 @@ export default function App() {
   const [newType, setNewType] = useState('expense')
   const [editing, setEditing] = useState(null)
   const [notice, setNotice] = useState('')
-  const [tab, setTab] = useState('dashboard')
+  const [tab, setTab] = useState('home')
   const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem('finance_sidebar_open') !== 'false')
   const [monthlyOpen, setMonthlyOpen] = useState(true)
   const [dashboardView, setDashboardView] = useState('overview')
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [filters, setFilters] = useState({ dateFrom: '', dateTo: '', category: 'all', minAmount: '', maxAmount: '' })
+  const [comparisonMonth, setComparisonMonth] = useState(() => {
+    const [y,m] = monthKey().split('-').map(Number)
+    return `${m === 1 ? y-1 : y}-${String(m === 1 ? 12 : m-1).padStart(2,'0')}`
+  })
+  const [theme, setTheme] = useState(() => localStorage.getItem('finance_theme') || 'blue')
   const [selectedReserveCategories, setSelectedReserveCategories] = useState(() => {
     try {
       const saved = localStorage.getItem('finance_selected_reserve_categories')
@@ -208,6 +216,24 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('finance_sidebar_open', String(sidebarOpen))
   }, [sidebarOpen])
+
+  useEffect(() => {
+    localStorage.setItem('finance_theme', theme)
+    document.documentElement.dataset.financeTheme = theme
+  }, [theme])
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)) return
+      if (e.key.toLowerCase() === 'i') openNew('income')
+      if (e.key.toLowerCase() === 'e') openNew('expense')
+      if (e.key.toLowerCase() === 'n') setTab('cargar')
+      if (e.key === '/') { e.preventDefault(); setFiltersOpen(true) }
+      if (e.key === 'Escape') { setFiltersOpen(false); setNotificationsOpen(false) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [accounts, categories])
 
   const saveAccountSettings = async (e) => {
     e.preventDefault()
@@ -460,10 +486,17 @@ export default function App() {
   const monthRows = useMemo(() => movements.filter(m => m.date?.startsWith(month)), [movements, month])
   const visibleMonthRows = useMemo(() => monthRows, [monthRows])
   const searchedRows = useMemo(
-    () => visibleMonthRows.filter(m =>
-      `${m.description} ${m.categories?.name || ''}`.toLowerCase().includes(search.toLowerCase())
-    ),
-    [visibleMonthRows, search]
+    () => visibleMonthRows.filter(m => {
+      const amount = Number(m.amount) || 0
+      const category = m.categories?.name || (savingsKind(m) ? 'Ahorros' : 'Sin categoría')
+      return `${m.description} ${category} ${m.notes || ''}`.toLowerCase().includes(search.toLowerCase()) &&
+        (!filters.dateFrom || m.date >= filters.dateFrom) &&
+        (!filters.dateTo || m.date <= filters.dateTo) &&
+        (filters.category === 'all' || category === filters.category) &&
+        (!filters.minAmount || amount >= Number(filters.minAmount)) &&
+        (!filters.maxAmount || amount <= Number(filters.maxAmount))
+    }),
+    [visibleMonthRows, search, filters]
   )
 
   // Los retiros desde ahorros se muestran como ingresos de la categoría Ahorros.
@@ -880,10 +913,37 @@ export default function App() {
     [movements]
   )
 
+
+  const allCategoryNames = useMemo(() => [...new Set(movements.map(x => x.categories?.name || (savingsKind(x) ? 'Ahorros' : 'Sin categoría')))].sort(), [movements])
+  const previousMonthRows = useMemo(() => movements.filter(x => x.date?.startsWith(comparisonMonth)), [movements, comparisonMonth])
+  const previousIncome = previousMonthRows.filter(x => x.type === 'income').reduce((s,x)=>s+Number(x.amount),0)
+  const previousExpense = previousMonthRows.filter(x => x.type === 'expense' && savingsKind(x) !== 'deposit').reduce((s,x)=>s+Number(x.amount),0)
+  const forecastExpense = daysWithExpense ? (expenseWithoutSavings / Math.max(new Date().getDate(),1)) * daysInSelectedMonth : expenseWithoutSavings
+  const forecastClosing = openingBalance + income - forecastExpense - monthlySavingsDeposits
+  const nextGoal = allocatedSavingsGoals.find(g => !g.completed)
+  const notifications = useMemo(() => {
+    const out = []
+    if (expenseWithoutSavings > previousExpense && previousExpense > 0) out.push({type:'warning', text:`Los gastos del mes superan en ${((expenseWithoutSavings/previousExpense-1)*100).toFixed(1)}% al mes comparado.`})
+    if (forecastClosing < 0) out.push({type:'danger', text:`La proyección indica un saldo negativo de ${money(Math.abs(forecastClosing))} al cierre del mes.`})
+    if (nextGoal && nextGoal.remaining > 0) out.push({type:'info', text:`Faltan ${money(nextGoal.remaining)} para completar la meta “${nextGoal.name}”.`})
+    if (!movements.length) out.push({type:'info', text:'Todavía no existen movimientos cargados.'})
+    if (!out.length) out.push({type:'success', text:'No se detectaron alertas financieras importantes.'})
+    return out
+  }, [expenseWithoutSavings, previousExpense, forecastClosing, nextGoal, movements.length])
+
+  const calendarDays = useMemo(() => {
+    const [y,m] = month.split('-').map(Number)
+    const first = new Date(y,m-1,1).getDay()
+    const days = new Date(y,m,0).getDate()
+    const map = {}
+    monthRows.forEach(x => { const d=Number(x.date?.slice(8,10)); map[d] ??={income:0,expense:0,savings:0}; if(savingsKind(x)==='deposit') map[d].savings += Number(x.amount); else if(x.type==='income') map[d].income += Number(x.amount); else map[d].expense += Number(x.amount) })
+    return { first, days, map }
+  }, [month, monthRows])
+
   if (loading) return <div className="center"><RefreshCw className="spin" /> Cargando finanzas…</div>
   if (configured && !session) return <Auth supabase={supabase} />
 
-  return <div className="app">
+  return <div className={`app theme-${theme}`}>
     <style>{`
       .kpis.extended article[title] { cursor: help; position: relative; }
       .kpis.extended article[title]:hover { transform: translateY(-2px); transition: transform .15s ease; }
@@ -994,12 +1054,49 @@ export default function App() {
         .account-settings .full-row { grid-column:1; }
       }
     `}</style>
+
+    <style>{`
+      .theme-blue { --accent:#38bdf8; --accent-soft:#183652; }
+      .theme-green { --accent:#4ade80; --accent-soft:#153d31; }
+      .theme-purple { --accent:#a78bfa; --accent-soft:#302452; }
+      .theme-orange { --accent:#f59e0b; --accent-soft:#4a3212; }
+      .theme-gray { --accent:#94a3b8; --accent-soft:#273244; }
+      .side-menu button.active, .monthly-toggle.open { border-color:var(--accent)!important; color:#fff!important; background:var(--accent-soft)!important; }
+      .floating-settings-button.active, .header-icon.active { background:var(--accent)!important; }
+      .header-icon { width:42px;height:42px;padding:0;border-radius:12px;display:grid;place-items:center; }
+      .overlay-panel { position:fixed;inset:0;background:#020817aa;z-index:100001;display:flex;justify-content:flex-end; }
+      .drawer { width:min(430px,94vw);height:100%;background:#09172a;border-left:1px solid #29405c;padding:22px;overflow:auto;box-shadow:-20px 0 60px #0008; }
+      .drawer-head { display:flex;align-items:center;justify-content:space-between;margin-bottom:20px; }
+      .drawer-head button { padding:7px; }
+      .filter-grid { display:grid;grid-template-columns:1fr 1fr;gap:12px; }
+      .filter-grid label { display:flex;flex-direction:column;gap:6px;font-size:12px;color:#8aa7c7; }
+      .filter-grid .full { grid-column:1/-1; }
+      .notification-item { border:1px solid #29405c;border-radius:12px;padding:13px;margin-bottom:10px;background:#0d1c30; }
+      .notification-item.warning { border-left:4px solid #f59e0b; }.notification-item.danger{border-left:4px solid #fb7185}.notification-item.success{border-left:4px solid #4ade80}.notification-item.info{border-left:4px solid #38bdf8}
+      .home-hero { display:flex;justify-content:space-between;gap:20px;align-items:center;margin-bottom:16px; }
+      .quick-actions { display:flex;gap:10px;flex-wrap:wrap; }
+      .home-grid { display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:14px; }
+      .home-grid>.panel { grid-column:span 6;min-width:0; }.home-grid>.wide{grid-column:1/-1}.home-grid>.third{grid-column:span 4}
+      .prediction-card strong { font-size:28px;display:block;margin:8px 0; }
+      .calendar-grid { display:grid;grid-template-columns:repeat(7,1fr);gap:6px; }
+      .calendar-head { text-align:center;color:#8aa7c7;font-size:12px;padding:6px; }
+      .calendar-day { min-height:88px;border:1px solid #29405c;border-radius:10px;padding:7px;background:#0d1c30;font-size:12px; }
+      .calendar-day.empty{visibility:hidden}.calendar-day b{display:block;margin-bottom:5px}.calendar-value{display:block;font-size:10px;margin-top:3px}.calendar-value.income{color:#4ade80}.calendar-value.expense{color:#fb7185}.calendar-value.savings{color:#38bdf8}
+      .sankey-flow { display:grid;grid-template-columns:1fr auto 1fr auto 1fr;align-items:center;gap:12px;min-height:210px; }
+      .flow-node { border:1px solid #29405c;border-radius:14px;padding:18px;background:#0d1c30;text-align:center; }.flow-node strong{font-size:22px;display:block;margin-top:8px}.flow-arrow{font-size:30px;color:var(--accent)}
+      .comparison-grid { display:grid;grid-template-columns:repeat(3,1fr);gap:12px; }.comparison-card{border:1px solid #29405c;border-radius:12px;padding:14px;background:#0d1c30}.comparison-card strong{font-size:20px;display:block;margin:7px 0}
+      .category-panel-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px; }.category-panel-card{border:1px solid #29405c;border-radius:12px;padding:14px;background:#0d1c30}.category-panel-card header{display:flex;justify-content:space-between;gap:10px}.category-progress{height:8px;background:#17283d;border-radius:99px;overflow:hidden;margin-top:10px}.category-progress div{height:100%;background:var(--accent)}
+      .theme-picker { display:grid;grid-template-columns:repeat(5,1fr);gap:10px; }.theme-option{height:54px;border-radius:12px;border:2px solid transparent}.theme-option.active{border-color:#fff;transform:scale(1.04)}.theme-blue-btn{background:#38bdf8}.theme-green-btn{background:#4ade80}.theme-purple-btn{background:#a78bfa}.theme-orange-btn{background:#f59e0b}.theme-gray-btn{background:#94a3b8}
+      .shortcut-grid { display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.shortcut{display:flex;align-items:center;justify-content:space-between;border:1px solid #29405c;border-radius:10px;padding:10px}.shortcut kbd{background:#17283d;border:1px solid #3a526e;border-radius:6px;padding:4px 8px}
+      @media(max-width:900px){.home-grid>.panel,.home-grid>.third{grid-column:1/-1}.sankey-flow{grid-template-columns:1fr}.flow-arrow{transform:rotate(90deg)}.comparison-grid{grid-template-columns:1fr}.filter-grid{grid-template-columns:1fr}.filter-grid .full{grid-column:1}.calendar-day{min-height:70px}.home-hero{align-items:flex-start;flex-direction:column}}
+    `}</style>
     <button className={`floating-settings-button ${tab === 'settings' ? 'active' : ''}`} onClick={() => setTab('settings')} title="Configuración" aria-label="Abrir configuración"><Settings /></button>
-    <header><div className="brand"><div className="brand-icon"><WalletCards /></div><div><b>Mis Finanzas</b><small>Información sincronizada y siempre disponible</small></div></div><div className="header-actions"><button className="secondary" onClick={() => openNew('income')}><ArrowUpCircle /> Ingreso</button><button onClick={() => openNew('expense')}><ArrowDownCircle /> Egreso</button>{configured && <button className="ghost" onClick={() => supabase.auth.signOut()} title="Cerrar sesión" aria-label="Cerrar sesión"><LogOut /></button>}</div></header>
+    <header><div className="brand"><div className="brand-icon"><WalletCards /></div><div><b>Mis Finanzas</b><small>Información sincronizada y siempre disponible</small></div></div><div className="header-actions"><button className={`ghost header-icon ${filtersOpen ? 'active' : ''}`} onClick={() => setFiltersOpen(true)} title="Filtros"><SlidersHorizontal /></button><button className={`ghost header-icon ${notificationsOpen ? 'active' : ''}`} onClick={() => setNotificationsOpen(true)} title="Notificaciones"><Bell />{notifications.length > 0 && <span className="notification-badge">{notifications.length}</span>}</button><button className="secondary" onClick={() => openNew('income')}><ArrowUpCircle /> Ingreso</button><button onClick={() => openNew('expense')}><ArrowDownCircle /> Egreso</button>{configured && <button className="ghost" onClick={() => supabase.auth.signOut()} title="Cerrar sesión" aria-label="Cerrar sesión"><LogOut /></button>}</div></header>
     <div className="app-shell">
       <aside className={`side-nav ${sidebarOpen ? '' : 'collapsed'}`}>
         <div className="side-nav-top"><button className="ghost side-toggle" onClick={() => setSidebarOpen(v => !v)} title={sidebarOpen ? 'Ocultar barra lateral' : 'Mostrar barra lateral'}><Menu /></button></div>
         <nav className="side-menu">
+          <button className={tab === 'home' ? 'active' : ''} onClick={() => setTab('home')} title="Inicio"><Home /><span className="nav-label">INICIO</span></button>
           <button className={tab === 'analysis' ? 'active' : ''} onClick={() => setTab('analysis')} title="Análisis de finanzas"><CircleDollarSign /><span className="nav-label">ANÁLISIS DE FINANZAS</span></button>
           <button className={tab === 'big-expenses' ? 'active' : ''} onClick={() => setTab('big-expenses')} title="Grandes gastos"><ReceiptText /><span className="nav-label">GRANDES GASTOS</span></button>
           <button className={tab === 'savings' ? 'active' : ''} onClick={() => setTab('savings')} title="Ahorros"><PiggyBank /><span className="nav-label">AHORROS</span></button>
@@ -1026,6 +1123,28 @@ export default function App() {
         {tab === 'dashboard' && <small className="period-note"><CalendarDays /> Todos los indicadores corresponden al mes seleccionado</small>}
         {tab === 'analysis' && <small className="period-note"><CalendarDays /> Análisis histórico de todos los movimientos disponibles</small>}
       </div>
+
+      {tab === 'home' && <>
+        <section className="home-hero">
+          <div><h1>Resumen financiero</h1><p>Una vista rápida del saldo, movimientos, alertas y objetivos.</p></div>
+          <div className="quick-actions"><button className="secondary" onClick={() => openNew('income')}><ArrowUpCircle/> Nuevo ingreso</button><button onClick={() => openNew('expense')}><ArrowDownCircle/> Nuevo egreso</button></div>
+        </section>
+        <section className="kpis compact-kpis">
+          <article><span>Saldo actual</span><strong className={closingBalance>=0?'positive':'negative'}>{money(closingBalance)}</strong><WalletCards/><small>{month}</small></article>
+          <article><span>Gastado este mes</span><strong className="negative">{money(expenseWithoutSavings)}</strong><TrendingDown/><small>{expenseRowsWithoutSavings.length} egresos</small></article>
+          <article><span>Ahorrado este mes</span><strong className="positive">{money(monthlySavingsDeposits)}</strong><PiggyBank/><small>Saldo total {money(savingsBalance)}</small></article>
+          <article><span>Próxima meta</span><strong>{nextGoal ? money(nextGoal.remaining) : 'Sin meta'}</strong><Target/><small>{nextGoal?.name || 'Crear una meta en Ahorros'}</small></article>
+          <article><span>Alertas</span><strong>{notifications.length}</strong><Bell/><small>Revisar centro de notificaciones</small></article>
+        </section>
+        <section className="home-grid">
+          <article className="panel prediction-card"><div className="panel-title"><div><ChartInfoTitle title="Predicción financiera" text="Proyecta el saldo de cierre usando el ritmo de gastos registrado durante el mes seleccionado."/><span>Estimación al cierre del mes</span></div></div><strong className={forecastClosing>=0?'positive':'negative'}>{money(forecastClosing)}</strong><p>Gasto proyectado: {money(forecastExpense)}. Esta estimación cambia con cada nuevo movimiento.</p></article>
+          <article className="panel"><div className="panel-title"><div><h3>Últimos movimientos</h3><span>Los cinco registros más recientes</span></div></div>{movements.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,5).map(x=><div className="concept-row" key={x.id}><div><span>{x.description}</span><small>{x.date?.split('-').reverse().join('/')} · {x.categories?.name || 'Sin categoría'}</small></div><b className={x.type==='income'?'positive':'negative'}>{x.type==='income'?'+':'-'}{money(x.amount)}</b></div>)}</article>
+          <article className="panel wide"><div className="panel-title"><div><ChartInfoTitle title="Comparador mensual" text="Compara ingresos, egresos y resultado neto del mes seleccionado contra otro mes."/><span>Mes actual frente al período elegido</span></div><input type="month" value={comparisonMonth} onChange={e=>setComparisonMonth(e.target.value)}/></div><div className="comparison-grid"><div className="comparison-card"><span>Ingresos</span><strong>{money(income)}</strong><small>{previousIncome ? `${((income/previousIncome-1)*100).toFixed(1)}% vs ${comparisonMonth}` : 'Sin base comparable'}</small></div><div className="comparison-card"><span>Egresos</span><strong>{money(expenseWithoutSavings)}</strong><small>{previousExpense ? `${((expenseWithoutSavings/previousExpense-1)*100).toFixed(1)}% vs ${comparisonMonth}` : 'Sin base comparable'}</small></div><div className="comparison-card"><span>Resultado neto</span><strong>{money(income-expenseWithoutSavings)}</strong><small>Anterior: {money(previousIncome-previousExpense)}</small></div></div></article>
+          <article className="panel wide"><div className="panel-title"><div><ChartInfoTitle title="Calendario financiero" text="Muestra por día los ingresos, egresos y aportes de ahorro del mes seleccionado."/><span>{month}</span></div></div><div className="calendar-grid">{['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'].map(d=><div className="calendar-head" key={d}>{d}</div>)}{Array.from({length:calendarDays.first}).map((_,i)=><div className="calendar-day empty" key={`e${i}`}/>) }{Array.from({length:calendarDays.days},(_,i)=>i+1).map(d=>{const v=calendarDays.map[d]||{};return <div className="calendar-day" key={d}><b>{d}</b>{v.income>0&&<span className="calendar-value income">+ {money(v.income)}</span>}{v.expense>0&&<span className="calendar-value expense">- {money(v.expense)}</span>}{v.savings>0&&<span className="calendar-value savings">Ahorro {money(v.savings)}</span>}</div>})}</div></article>
+          <article className="panel wide"><div className="panel-title"><div><ChartInfoTitle title="Flujo del dinero" text="Representa cómo los ingresos disponibles se distribuyen entre gastos, ahorros y saldo restante."/><span>Vista tipo Sankey simplificada</span></div></div><div className="sankey-flow"><div className="flow-node"><span>Ingresos</span><strong className="positive">{money(income)}</strong></div><div className="flow-arrow">→</div><div className="flow-node"><span>Dinero disponible</span><strong>{money(openingBalance+income)}</strong></div><div className="flow-arrow">→</div><div><div className="flow-node"><span>Gastos</span><strong className="negative">{money(expenseWithoutSavings)}</strong></div><div className="flow-node"><span>Ahorros</span><strong>{money(monthlySavingsDeposits)}</strong></div><div className="flow-node"><span>Saldo</span><strong className={closingBalance>=0?'positive':'negative'}>{money(closingBalance)}</strong></div></div></div></article>
+          <article className="panel wide"><div className="panel-title"><div><ChartInfoTitle title="Panel de categorías" text="Ordena las categorías por gasto y muestra el peso relativo de cada una dentro del total mensual."/><span>Distribución del gasto mensual</span></div></div><div className="category-panel-grid">{byCategory.map(x=><div className="category-panel-card" key={x.name}><header><b>{x.name}</b><strong>{money(x.value)}</strong></header><small>{expenseWithoutSavings?((x.value/expenseWithoutSavings)*100).toFixed(1):0}% del gasto</small><div className="category-progress"><div style={{width:`${expenseWithoutSavings?Math.min(x.value/expenseWithoutSavings*100,100):0}%`}}/></div></div>)}</div></article>
+        </section>
+      </>}
 
       {tab === 'analysis' && <>
         <section className="kpis extended" style={{"--card-cursor":"help"}}>
@@ -1464,6 +1583,10 @@ export default function App() {
       {tab === 'expense' && <TransactionsTable rows={expenseRows} title="Egresos" type="expense" search={search} setSearch={setSearch} onEdit={m => { setEditing(m); setNewType('expense'); setModal(true) }} onDelete={remove} />}
 
       {tab === 'settings' && <section className="panel account-settings">
+        <div className="panel-title"><div><h3>Personalización</h3><span>Color principal y atajos de teclado</span></div></div>
+        <div className="theme-picker">{['blue','green','purple','orange','gray'].map(x=><button type="button" key={x} className={`theme-option theme-${x}-btn ${theme===x?'active':''}`} onClick={()=>setTheme(x)} title={`Tema ${x}`}/>)}</div>
+        <div className="shortcut-grid" style={{margin:'16px 0 22px'}}><div className="shortcut"><span>Nuevo ingreso</span><kbd>I</kbd></div><div className="shortcut"><span>Nuevo egreso</span><kbd>E</kbd></div><div className="shortcut"><span>Ir a cargar</span><kbd>N</kbd></div><div className="shortcut"><span>Abrir filtros</span><kbd>/</kbd></div></div>
+
         <div className="panel-title">
           <div><h3>Configuración de cuenta</h3><span>Administrar los datos de acceso y la sesión actual</span></div>
         </div>
