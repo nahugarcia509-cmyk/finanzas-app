@@ -235,37 +235,12 @@ export default function App() {
     }
   }
 
-  const OWNER_EMAIL = 'nahu.garcia.509@gmail.com'
-
   const loadAll = async () => {
     if (!session?.user?.id) return
     setLoading(true)
     try {
       await supabase.rpc('bootstrap_user')
-
-      const currentEmail = String(session.user.email || '').trim().toLowerCase()
-      const isOwner = currentEmail === OWNER_EMAIL
-
-      // Cualquier usuario distinto del propietario debe comenzar sin cargas.
-      // Se eliminan únicamente las transacciones pertenecientes a ese usuario.
-      if (!isOwner) {
-        const { error: clearError } = await supabase
-          .from('transactions')
-          .delete()
-          .eq('user_id', session.user.id)
-
-        if (clearError) throw clearError
-
-        // Las metas se almacenaban en el navegador y podían heredarse entre cuentas.
-        localStorage.removeItem('finance_savings_goals')
-        localStorage.removeItem('finance_selected_reserve_categories')
-        localStorage.removeItem('finance_selected_income_categories')
-        setSavingsGoals([])
-        setSelectedReserveCategories(null)
-        setSelectedIncomeCategories(null)
-      }
-
-      const [a, c, m] = await Promise.all([
+      let [a, c, m] = await Promise.all([
         supabase.from('accounts').select('*').eq('user_id', session.user.id).order('name'),
         supabase.from('categories').select('*').eq('user_id', session.user.id).order('type').order('name'),
         supabase.from('transactions').select('*,accounts(name),categories(name)').eq('user_id', session.user.id).order('date', { ascending: false })
@@ -273,7 +248,7 @@ export default function App() {
       if (a.error || c.error || m.error) throw new Error(a.error?.message || c.error?.message || m.error?.message)
       setAccounts(a.data || [])
       setCategories(c.data || [])
-      setMovements(isOwner ? (m.data || []) : [])
+      setMovements(m.data || [])
     } catch (e) { setNotice(e.message || String(e)) }
     finally { setLoading(false) }
   }
