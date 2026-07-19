@@ -235,31 +235,6 @@ export default function App() {
     }
   }
 
-  const seedRemoteIfEmpty = async (loadedAccounts, loadedCategories, loadedTransactions) => {
-    if (loadedTransactions.length) return false
-    const account = loadedAccounts[0]
-    if (!account) return false
-    const current = new Map(loadedCategories.map(c => [`${c.type}|${c.name.toLowerCase()}`, c.id]))
-    const missing = seedCategories.filter(c => !current.has(`${c.type}|${c.name.toLowerCase()}`)).map(c => ({ ...c, user_id: session.user.id }))
-    if (missing.length) {
-      const { error } = await supabase.from('categories').insert(missing)
-      if (error) throw error
-    }
-    const { data: allCats, error: catError } = await supabase.from('categories').select('*')
-    if (catError) throw catError
-    const catMap = new Map(allCats.map(c => [`${c.type}|${c.name.toLowerCase()}`, c.id]))
-    const rows = seedTransactions.map((x, i) => ({
-      user_id: session.user.id, date: x.date, type: x.type, description: x.description,
-      amount: x.amount, account_id: account.id, category_id: catMap.get(`${x.type}|${x.category.toLowerCase()}`),
-      notes: null, import_key: `historico-finanzas-${i}`
-    }))
-    for (let i = 0; i < rows.length; i += 200) {
-      const { error } = await supabase.from('transactions').insert(rows.slice(i, i + 200))
-      if (error) throw error
-    }
-    return true
-  }
-
   const loadAll = async () => {
     setLoading(true)
     try {
@@ -270,14 +245,6 @@ export default function App() {
         supabase.from('transactions').select('*,accounts(name),categories(name)').order('date', { ascending: false })
       ])
       if (a.error || c.error || m.error) throw new Error(a.error?.message || c.error?.message || m.error?.message)
-      const seeded = await seedRemoteIfEmpty(a.data || [], c.data || [], m.data || [])
-      if (seeded) {
-        ;[a, c, m] = await Promise.all([
-          supabase.from('accounts').select('*').order('name'),
-          supabase.from('categories').select('*').order('type').order('name'),
-          supabase.from('transactions').select('*,accounts(name),categories(name)').order('date', { ascending: false })
-        ])
-      }
       setAccounts(a.data || [])
       setCategories(c.data || [])
       setMovements(m.data || [])
