@@ -3,7 +3,7 @@ import {
   ArrowDownCircle, ArrowUpCircle, CalendarDays, CircleDollarSign, FolderCog,
   LayoutDashboard, LogOut, Pencil, Plus, RefreshCw, Search, Settings, Settings2, Trash2,
   TrendingDown, TrendingUp, WalletCards, PiggyBank, ReceiptText, Download, Upload,
-  Eye, EyeOff, UserRound
+  Eye, EyeOff, UserRound, Menu, ChevronDown, HelpCircle
 } from 'lucide-react'
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie,
@@ -102,6 +102,16 @@ function GeneralBalanceTable({ openingBalance, incomeByCategory, expenseByCatego
   </section>
 }
 
+function ChartInfoTitle({ title, text }) {
+  return <div className="chart-title-row">
+    <h3>{title}</h3>
+    <span className="chart-help" tabIndex={0} aria-label={`Explicación de ${title}`}>
+      <HelpCircle />
+      <span className="chart-help-tooltip">{text}</span>
+    </span>
+  </div>
+}
+
 export default function App() {
   const [session, setSession] = useState(null)
   const [accounts, setAccounts] = useState([])
@@ -115,6 +125,8 @@ export default function App() {
   const [editing, setEditing] = useState(null)
   const [notice, setNotice] = useState('')
   const [tab, setTab] = useState('dashboard')
+  const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem('finance_sidebar_open') !== 'false')
+  const [monthlyOpen, setMonthlyOpen] = useState(true)
   const [dashboardView, setDashboardView] = useState('overview')
   const [selectedReserveCategories, setSelectedReserveCategories] = useState(() => {
     try {
@@ -192,6 +204,10 @@ export default function App() {
     if (!session?.user) return
     setProfileName(session.user.user_metadata?.name || session.user.user_metadata?.full_name || '')
   }, [session])
+
+  useEffect(() => {
+    localStorage.setItem('finance_sidebar_open', String(sidebarOpen))
+  }, [sidebarOpen])
 
   const saveAccountSettings = async (e) => {
     e.preventDefault()
@@ -913,6 +929,35 @@ export default function App() {
       .category-table-grid { grid-template-columns:repeat(4,minmax(0,1fr)) !important; }
       .category-detail-card { min-width:0; }
       .category-detail-body { max-height:330px; overflow:auto; }
+
+      .app-shell { display:flex; min-height:calc(100vh - 76px); width:100%; }
+      .side-nav { width:280px; flex:0 0 280px; border-right:1px solid #29405c; background:#091729; padding:14px 10px; transition:width .22s ease, flex-basis .22s ease, padding .22s ease; overflow:hidden; }
+      .side-nav.collapsed { width:74px; flex-basis:74px; padding-inline:8px; }
+      .side-nav-top { display:flex; justify-content:flex-end; margin-bottom:10px; }
+      .side-toggle { width:42px; min-width:42px; height:42px; padding:0 !important; display:flex; align-items:center; justify-content:center; }
+      .side-menu { display:flex; flex-direction:column; gap:7px; }
+      .side-menu button { width:100%; min-height:44px; display:flex; align-items:center; gap:12px; justify-content:flex-start; border:1px solid transparent; background:transparent; color:#9fb3c8; border-radius:10px; padding:10px 12px; cursor:pointer; white-space:nowrap; }
+      .side-menu button svg { width:19px; height:19px; flex:0 0 19px; }
+      .side-menu button:hover { background:#10243c; color:#fff; }
+      .side-menu button.active { background:#183652; color:#fff; border-color:#38bdf8; }
+      .side-menu .monthly-group { border-top:1px solid #29405c; margin-top:7px; padding-top:10px; }
+      .monthly-toggle { justify-content:space-between !important; }
+      .monthly-toggle .monthly-label { display:flex; align-items:center; gap:12px; min-width:0; }
+      .monthly-toggle .chevron { margin-left:auto; transition:transform .2s ease; }
+      .monthly-toggle.open .chevron { transform:rotate(180deg); }
+      .monthly-items { display:flex; flex-direction:column; gap:5px; margin-top:5px; padding-left:10px; }
+      .monthly-items button { padding-left:16px; }
+      .side-nav.collapsed .nav-label, .side-nav.collapsed .chevron { display:none; }
+      .side-nav.collapsed .side-menu button { justify-content:center; padding-inline:10px; }
+      .side-nav.collapsed .monthly-items { padding-left:0; }
+      .app-content { flex:1; min-width:0; }
+      .chart-title-row { display:flex; align-items:center; gap:8px; }
+      .chart-title-row h3 { margin:0; }
+      .chart-help { position:relative; display:inline-flex; align-items:center; justify-content:center; color:#8fb0d3; cursor:help; outline:none; }
+      .chart-help > svg { width:18px; height:18px; }
+      .chart-help-tooltip { position:absolute; z-index:1000; left:50%; top:calc(100% + 10px); transform:translateX(-50%); width:min(330px,72vw); padding:12px 14px; border-radius:10px; border:1px solid #3a5878; background:#071524; color:#e8f2ff; font-size:12px; line-height:1.5; box-shadow:0 12px 35px rgba(0,0,0,.45); opacity:0; visibility:hidden; pointer-events:none; transition:opacity .15s ease, visibility .15s ease; }
+      .chart-help:hover .chart-help-tooltip, .chart-help:focus .chart-help-tooltip { opacity:1; visibility:visible; }
+      @media (max-width:850px) { .side-nav { position:fixed; left:0; top:76px; bottom:0; z-index:9990; box-shadow:12px 0 30px rgba(0,0,0,.35); } .side-nav.collapsed { width:68px; flex-basis:68px; } .app-shell { padding-left:68px; } }
       .account-settings { max-width:760px; margin:0 auto; }
       .account-settings-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
       .account-settings label { display:flex; flex-direction:column; gap:8px; color:#9fb3c8; font-size:13px; }
@@ -951,17 +996,26 @@ export default function App() {
     `}</style>
     <button className={`floating-settings-button ${tab === 'settings' ? 'active' : ''}`} onClick={() => setTab('settings')} title="Configuración" aria-label="Abrir configuración"><Settings /></button>
     <header><div className="brand"><div className="brand-icon"><WalletCards /></div><div><b>Mis Finanzas</b><small>Información sincronizada y siempre disponible</small></div></div><div className="header-actions"><button className="secondary" onClick={() => openNew('income')}><ArrowUpCircle /> Ingreso</button><button onClick={() => openNew('expense')}><ArrowDownCircle /> Egreso</button>{configured && <button className="ghost" onClick={() => supabase.auth.signOut()} title="Cerrar sesión" aria-label="Cerrar sesión"><LogOut /></button>}</div></header>
-    <nav className="tabs">
-      <button className={tab === 'analysis' ? 'active' : ''} onClick={() => setTab('analysis')}><CircleDollarSign /> ANÁLISIS DE FINANZAS</button>
-      <button className={tab === 'big-expenses' ? 'active' : ''} onClick={() => setTab('big-expenses')}><ReceiptText /> GRANDES GASTOS</button>
-      <button className={tab === 'savings' ? 'active' : ''} onClick={() => setTab('savings')}><PiggyBank /> AHORROS</button>
-      <button className={tab === 'dashboard' ? 'active' : ''} onClick={() => setTab('dashboard')}><LayoutDashboard /> Dashboard</button>
-      <button className={tab === 'cargar' ? 'active' : ''} onClick={() => setTab('cargar')}><Plus /> Cargar</button>
-      <button className={tab === 'income' ? 'active' : ''} onClick={() => setTab('income')}><TrendingUp /> Ingresos</button>
-      <button className={tab === 'expense' ? 'active' : ''} onClick={() => setTab('expense')}><TrendingDown /> Egresos</button>
-      <button className={tab === 'control' ? 'active' : ''} onClick={() => setTab('control')}><Settings2 /> Control</button>
-    </nav>
-    <main>
+    <div className="app-shell">
+      <aside className={`side-nav ${sidebarOpen ? '' : 'collapsed'}`}>
+        <div className="side-nav-top"><button className="ghost side-toggle" onClick={() => setSidebarOpen(v => !v)} title={sidebarOpen ? 'Ocultar barra lateral' : 'Mostrar barra lateral'}><Menu /></button></div>
+        <nav className="side-menu">
+          <button className={tab === 'analysis' ? 'active' : ''} onClick={() => setTab('analysis')} title="Análisis de finanzas"><CircleDollarSign /><span className="nav-label">ANÁLISIS DE FINANZAS</span></button>
+          <button className={tab === 'big-expenses' ? 'active' : ''} onClick={() => setTab('big-expenses')} title="Grandes gastos"><ReceiptText /><span className="nav-label">GRANDES GASTOS</span></button>
+          <button className={tab === 'savings' ? 'active' : ''} onClick={() => setTab('savings')} title="Ahorros"><PiggyBank /><span className="nav-label">AHORROS</span></button>
+          <div className="monthly-group">
+            <button className={`monthly-toggle ${monthlyOpen ? 'open' : ''}`} onClick={() => setMonthlyOpen(v => !v)} title="Mensual"><span className="monthly-label"><CalendarDays /><span className="nav-label">MENSUAL</span></span><ChevronDown className="chevron" /></button>
+            {monthlyOpen && <div className="monthly-items">
+              <button className={tab === 'dashboard' ? 'active' : ''} onClick={() => setTab('dashboard')} title="Dashboard mensual"><LayoutDashboard /><span className="nav-label">Dashboard</span></button>
+              <button className={tab === 'cargar' ? 'active' : ''} onClick={() => setTab('cargar')} title="Cargar movimientos"><Plus /><span className="nav-label">Cargar</span></button>
+              <button className={tab === 'income' ? 'active' : ''} onClick={() => setTab('income')} title="Ingresos mensuales"><TrendingUp /><span className="nav-label">Ingresos</span></button>
+              <button className={tab === 'expense' ? 'active' : ''} onClick={() => setTab('expense')} title="Egresos mensuales"><TrendingDown /><span className="nav-label">Egresos</span></button>
+              <button className={tab === 'control' ? 'active' : ''} onClick={() => setTab('control')} title="Control mensual"><Settings2 /><span className="nav-label">Control</span></button>
+            </div>}
+          </div>
+        </nav>
+      </aside>
+      <main className="app-content">
       {notice && <div className="notice" onClick={() => setNotice('')}>{notice}</div>}
       <div className="toolbar">
         {tab === 'analysis'
@@ -984,9 +1038,9 @@ export default function App() {
         </section>
 
         <section className="charts dashboard-grid">
-          <article className="panel span2"><div className="panel-title"><div><h3>Evolución histórica de ingresos y egresos</h3><span>Comparación mensual para detectar tendencias</span></div></div><div className="chart tall"><ResponsiveContainer><BarChart data={financeAnalysis.analysisMonthTotals}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis dataKey="month" stroke="#7890a8"/><YAxis stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><Tooltip formatter={v=>money(v)}/><Legend/><Bar dataKey="ingresos" name="Ingresos" fill="#4ade80" radius={[5,5,0,0]}/><Bar dataKey="egresos" name="Egresos sin ahorros" fill="#fb7185" radius={[5,5,0,0]}/></BarChart></ResponsiveContainer></div></article>
+          <article className="panel span2"><div className="panel-title"><div><ChartInfoTitle title="Evolución histórica de ingresos y egresos" text="Compara mes a mes los ingresos totales con los egresos reales sin incluir aportes a ahorros. Permite identificar tendencias, picos de gasto y meses con mayor capacidad de ahorro." /><span>Comparación mensual para detectar tendencias</span></div></div><div className="chart tall"><ResponsiveContainer><BarChart data={financeAnalysis.analysisMonthTotals}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis dataKey="month" stroke="#7890a8"/><YAxis stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><Tooltip formatter={v=>money(v)}/><Legend/><Bar dataKey="ingresos" name="Ingresos" fill="#4ade80" radius={[5,5,0,0]}/><Bar dataKey="egresos" name="Egresos sin ahorros" fill="#fb7185" radius={[5,5,0,0]}/></BarChart></ResponsiveContainer></div></article>
 
-          <article className="panel span2"><div className="panel-title"><div><h3>Cuánto reservar por categoría</h3><span>{selectedReserveExpenses.length} categorías seleccionadas · Total {money(selectedReserveTotal)}</span></div></div><div className="chart tall"><ResponsiveContainer><BarChart data={selectedReserveExpenses.slice(0,12)} layout="vertical" margin={{left:20,right:20}}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis type="number" stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><YAxis type="category" dataKey="name" width={115} stroke="#7890a8" tick={{fontSize:10}}/><Tooltip formatter={(v,name)=>[money(v),name]}/><Legend/><Bar dataKey="averageMonthly" name="Promedio mensual" fill="#38bdf8" radius={[0,5,5,0]}/><Bar dataKey="suggestedReserve" name="Reserva sugerida" fill="#f59e0b" radius={[0,5,5,0]}/></BarChart></ResponsiveContainer></div></article>
+          <article className="panel span2"><div className="panel-title"><div><ChartInfoTitle title="Cuánto reservar por categoría" text="Muestra el promedio mensual de cada categoría seleccionada y la reserva sugerida, que incorpora un margen adicional del 20% para cubrir variaciones." /><span>{selectedReserveExpenses.length} categorías seleccionadas · Total {money(selectedReserveTotal)}</span></div></div><div className="chart tall"><ResponsiveContainer><BarChart data={selectedReserveExpenses.slice(0,12)} layout="vertical" margin={{left:20,right:20}}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis type="number" stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><YAxis type="category" dataKey="name" width={115} stroke="#7890a8" tick={{fontSize:10}}/><Tooltip formatter={(v,name)=>[money(v),name]}/><Legend/><Bar dataKey="averageMonthly" name="Promedio mensual" fill="#38bdf8" radius={[0,5,5,0]}/><Bar dataKey="suggestedReserve" name="Reserva sugerida" fill="#f59e0b" radius={[0,5,5,0]}/></BarChart></ResponsiveContainer></div></article>
         </section>
 
         <section className="panel table-panel">
@@ -1360,23 +1414,23 @@ export default function App() {
           </section>
 
           <section className="charts dashboard-grid dashboard-wide-grid">
-            <article className="panel full-width-chart"><div className="panel-title"><div><h3>Balance diario del mes</h3><span>Días 1 al último día del período seleccionado</span></div></div><div className="chart tall"><ResponsiveContainer><AreaChart data={daily} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis type="number" dataKey="day" domain={[1, daysInSelectedMonth]} ticks={dayTicks} interval={0} allowDecimals={false} stroke="#7890a8" tick={{ fontSize: 10 }}/><YAxis stroke="#7890a8" width={72} tickFormatter={v => `$${Math.round(v/1000)}k`}/><Tooltip formatter={v => money(v)} labelFormatter={d => `Día ${Number(d)}`}/><Area type="monotone" dataKey="acumulado" name="Saldo disponible" stroke="#4ade80" fill="#4ade8033" strokeWidth={3}/></AreaChart></ResponsiveContainer></div></article>
+            <article className="panel full-width-chart"><div className="panel-title"><div><ChartInfoTitle title="Balance diario del mes" text="Representa cómo evoluciona el saldo disponible durante cada día del mes, sumando ingresos y restando egresos acumulados." /><span>Días 1 al último día del período seleccionado</span></div></div><div className="chart tall"><ResponsiveContainer><AreaChart data={daily} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis type="number" dataKey="day" domain={[1, daysInSelectedMonth]} ticks={dayTicks} interval={0} allowDecimals={false} stroke="#7890a8" tick={{ fontSize: 10 }}/><YAxis stroke="#7890a8" width={72} tickFormatter={v => `$${Math.round(v/1000)}k`}/><Tooltip formatter={v => money(v)} labelFormatter={d => `Día ${Number(d)}`}/><Area type="monotone" dataKey="acumulado" name="Saldo disponible" stroke="#4ade80" fill="#4ade8033" strokeWidth={3}/></AreaChart></ResponsiveContainer></div></article>
 
-            <article className="panel"><div className="panel-title"><div><h3>Gastos por categoría</h3><span>Participación sobre el total mensual</span></div></div><div className="chart"><ResponsiveContainer><PieChart><Pie data={byCategory} dataKey="value" nameKey="name" innerRadius={46} outerRadius={88}>{byCategory.map((_,i)=><Cell key={i} fill={palette[i%palette.length]}/>)}</Pie><Tooltip formatter={v=>money(v)}/></PieChart></ResponsiveContainer></div><div className="legend compact-legend">{byCategory.slice(0,8).map((x,i)=><span key={x.name}><i style={{background:palette[i%palette.length]}}></i>{x.name}<b>{money(x.value)}</b></span>)}</div></article>
+            <article className="panel"><div className="panel-title"><div><ChartInfoTitle title="Gastos por categoría" text="Distribuye el total mensual de egresos entre las distintas categorías para mostrar cuáles concentran la mayor parte del gasto." /><span>Participación sobre el total mensual</span></div></div><div className="chart"><ResponsiveContainer><PieChart><Pie data={byCategory} dataKey="value" nameKey="name" innerRadius={46} outerRadius={88}>{byCategory.map((_,i)=><Cell key={i} fill={palette[i%palette.length]}/>)}</Pie><Tooltip formatter={v=>money(v)}/></PieChart></ResponsiveContainer></div><div className="legend compact-legend">{byCategory.slice(0,8).map((x,i)=><span key={x.name}><i style={{background:palette[i%palette.length]}}></i>{x.name}<b>{money(x.value)}</b></span>)}</div></article>
 
-            <article className="panel"><div className="panel-title"><div><h3>Ingresos por categoría</h3><span>Participación sobre el total mensual</span></div></div><div className="chart"><ResponsiveContainer><PieChart><Pie data={incomeByCategory} dataKey="value" nameKey="name" innerRadius={46} outerRadius={88}>{incomeByCategory.map((_,i)=><Cell key={i} fill={palette[(i+2)%palette.length]}/>)}</Pie><Tooltip formatter={v=>money(v)}/></PieChart></ResponsiveContainer></div><div className="legend compact-legend">{incomeByCategory.slice(0,8).map((x,i)=><span key={x.name}><i style={{background:palette[(i+2)%palette.length]}}></i>{x.name}<b>{money(x.value)}</b></span>)}</div></article>
+            <article className="panel"><div className="panel-title"><div><ChartInfoTitle title="Ingresos por categoría" text="Muestra cómo se distribuyen los ingresos del mes según su categoría u origen." /><span>Participación sobre el total mensual</span></div></div><div className="chart"><ResponsiveContainer><PieChart><Pie data={incomeByCategory} dataKey="value" nameKey="name" innerRadius={46} outerRadius={88}>{incomeByCategory.map((_,i)=><Cell key={i} fill={palette[(i+2)%palette.length]}/>)}</Pie><Tooltip formatter={v=>money(v)}/></PieChart></ResponsiveContainer></div><div className="legend compact-legend">{incomeByCategory.slice(0,8).map((x,i)=><span key={x.name}><i style={{background:palette[(i+2)%palette.length]}}></i>{x.name}<b>{money(x.value)}</b></span>)}</div></article>
 
-            <article className="panel"><div className="panel-title"><div><h3>Mayores gastos individuales</h3><span>Los 10 movimientos de mayor importe · sin considerar ahorros</span></div></div><div className="chart"><ResponsiveContainer><BarChart data={topExpenseItems} layout="vertical" margin={{ left: 18, right: 16 }}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis type="number" stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><YAxis type="category" dataKey="name" width={105} stroke="#7890a8" tick={{fontSize:10}}/><Tooltip formatter={(v, _name, item)=>[money(v), item?.payload?.category || 'Egreso']}/><Bar dataKey="value" name="Monto" fill="#fb7185" radius={[0,5,5,0]}/></BarChart></ResponsiveContainer></div></article>
+            <article className="panel"><div className="panel-title"><div><ChartInfoTitle title="Mayores gastos individuales" text="Ordena los diez egresos individuales más altos del período para detectar rápidamente los movimientos de mayor impacto." /><span>Los 10 movimientos de mayor importe · sin considerar ahorros</span></div></div><div className="chart"><ResponsiveContainer><BarChart data={topExpenseItems} layout="vertical" margin={{ left: 18, right: 16 }}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis type="number" stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><YAxis type="category" dataKey="name" width={105} stroke="#7890a8" tick={{fontSize:10}}/><Tooltip formatter={(v, _name, item)=>[money(v), item?.payload?.category || 'Egreso']}/><Bar dataKey="value" name="Monto" fill="#fb7185" radius={[0,5,5,0]}/></BarChart></ResponsiveContainer></div></article>
 
-            <article className="panel"><div className="panel-title"><div><h3>Ingresos por categoría</h3><span>Origen de los fondos del mes</span></div></div><div className="chart"><ResponsiveContainer><BarChart data={incomeByCategory.slice(0,10)} layout="vertical" margin={{ left: 20, right: 16 }}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis type="number" stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><YAxis type="category" dataKey="name" width={115} stroke="#7890a8" tick={{fontSize:10}}/><Tooltip formatter={v=>money(v)}/><Bar dataKey="value" name="Ingresos" fill="#4ade80" radius={[0,5,5,0]}/></BarChart></ResponsiveContainer></div></article>
+            <article className="panel"><div className="panel-title"><div><ChartInfoTitle title="Ingresos por categoría" text="Muestra cómo se distribuyen los ingresos del mes según su categoría u origen." /><span>Origen de los fondos del mes</span></div></div><div className="chart"><ResponsiveContainer><BarChart data={incomeByCategory.slice(0,10)} layout="vertical" margin={{ left: 20, right: 16 }}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis type="number" stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><YAxis type="category" dataKey="name" width={115} stroke="#7890a8" tick={{fontSize:10}}/><Tooltip formatter={v=>money(v)}/><Bar dataKey="value" name="Ingresos" fill="#4ade80" radius={[0,5,5,0]}/></BarChart></ResponsiveContainer></div></article>
 
-            <article className="panel"><div className="panel-title"><div><h3>Ingresos y egresos diarios</h3><span>Comparación por día</span></div></div><div className="chart"><ResponsiveContainer><BarChart data={daily} margin={{ right: 8 }}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis type="number" dataKey="day" domain={[1, daysInSelectedMonth]} ticks={dayTicks} interval={0} allowDecimals={false} stroke="#7890a8" tick={{fontSize:9}}/><YAxis stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><Tooltip formatter={v=>money(v)}/><Legend/><Bar dataKey="ingresos" fill="#4ade80"/><Bar dataKey="egresos" fill="#fb7185"/></BarChart></ResponsiveContainer></div></article>
+            <article className="panel"><div className="panel-title"><div><ChartInfoTitle title="Ingresos y egresos diarios" text="Compara los ingresos y egresos registrados en cada día del mes para detectar jornadas con mayor movimiento de dinero." /><span>Comparación por día</span></div></div><div className="chart"><ResponsiveContainer><BarChart data={daily} margin={{ right: 8 }}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis type="number" dataKey="day" domain={[1, daysInSelectedMonth]} ticks={dayTicks} interval={0} allowDecimals={false} stroke="#7890a8" tick={{fontSize:9}}/><YAxis stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><Tooltip formatter={v=>money(v)}/><Legend/><Bar dataKey="ingresos" fill="#4ade80"/><Bar dataKey="egresos" fill="#fb7185"/></BarChart></ResponsiveContainer></div></article>
 
-            <article className="panel"><div className="panel-title"><div><h3>Ingresos vs. egresos acumulados</h3><span>Evolución dentro del mes</span></div></div><div className="chart"><ResponsiveContainer><LineChart data={daily}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis type="number" dataKey="day" domain={[1, daysInSelectedMonth]} ticks={dayTicks} interval={0} allowDecimals={false} stroke="#7890a8" tick={{fontSize:9}}/><YAxis stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><Tooltip formatter={v=>money(v)}/><Legend/><Line type="monotone" dataKey="ingresosAc" name="Ingresos acumulados" stroke="#4ade80" strokeWidth={3} dot={false}/><Line type="monotone" dataKey="egresosAc" name="Egresos acumulados" stroke="#fb7185" strokeWidth={3} dot={false}/></LineChart></ResponsiveContainer></div></article>
+            <article className="panel"><div className="panel-title"><div><ChartInfoTitle title="Ingresos vs. egresos acumulados" text="Compara la acumulación progresiva de ingresos y egresos dentro del mes y permite observar en qué momento una curva supera a la otra." /><span>Evolución dentro del mes</span></div></div><div className="chart"><ResponsiveContainer><LineChart data={daily}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis type="number" dataKey="day" domain={[1, daysInSelectedMonth]} ticks={dayTicks} interval={0} allowDecimals={false} stroke="#7890a8" tick={{fontSize:9}}/><YAxis stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><Tooltip formatter={v=>money(v)}/><Legend/><Line type="monotone" dataKey="ingresosAc" name="Ingresos acumulados" stroke="#4ade80" strokeWidth={3} dot={false}/><Line type="monotone" dataKey="egresosAc" name="Egresos acumulados" stroke="#fb7185" strokeWidth={3} dot={false}/></LineChart></ResponsiveContainer></div></article>
 
-            <article className="panel"><div className="panel-title"><div><h3>Saldo acumulado por mes</h3><span>Desde abril de 2026</span></div></div><div className="chart"><ResponsiveContainer><BarChart data={monthTotals}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis dataKey="month" stroke="#7890a8"/><YAxis stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><Tooltip formatter={v=>money(v)}/><Bar dataKey="saldoFinal" name="Saldo final" fill="#22c55e" radius={[6,6,0,0]}/></BarChart></ResponsiveContainer></div></article>
+            <article className="panel"><div className="panel-title"><div><ChartInfoTitle title="Saldo acumulado por mes" text="Muestra el saldo final alcanzado al cierre de cada mes, incluyendo el arrastre del saldo anterior." /><span>Desde abril de 2026</span></div></div><div className="chart"><ResponsiveContainer><BarChart data={monthTotals}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis dataKey="month" stroke="#7890a8"/><YAxis stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><Tooltip formatter={v=>money(v)}/><Bar dataKey="saldoFinal" name="Saldo final" fill="#22c55e" radius={[6,6,0,0]}/></BarChart></ResponsiveContainer></div></article>
 
-            <article className="panel"><div className="panel-title"><div><h3>Evolución mensual completa</h3><span>Ingresos, egresos, resultado y saldo</span></div></div><div className="chart"><ResponsiveContainer><LineChart data={monthTotals}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis dataKey="month" stroke="#7890a8"/><YAxis stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><Tooltip formatter={v=>money(v)}/><Legend/><Line type="monotone" dataKey="ingresos" stroke="#4ade80" strokeWidth={2} dot={false}/><Line type="monotone" dataKey="egresos" stroke="#fb7185" strokeWidth={2} dot={false}/><Line type="monotone" dataKey="neto" name="Resultado mensual" stroke="#38bdf8" strokeWidth={2} dot={false}/><Line type="monotone" dataKey="saldoFinal" name="Saldo acumulado" stroke="#f59e0b" strokeWidth={3} dot={false}/></LineChart></ResponsiveContainer></div></article>
+            <article className="panel"><div className="panel-title"><div><ChartInfoTitle title="Evolución mensual completa" text="Presenta conjuntamente ingresos, egresos, resultado mensual y saldo acumulado para analizar la evolución financiera general." /><span>Ingresos, egresos, resultado y saldo</span></div></div><div className="chart"><ResponsiveContainer><LineChart data={monthTotals}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis dataKey="month" stroke="#7890a8"/><YAxis stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><Tooltip formatter={v=>money(v)}/><Legend/><Line type="monotone" dataKey="ingresos" stroke="#4ade80" strokeWidth={2} dot={false}/><Line type="monotone" dataKey="egresos" stroke="#fb7185" strokeWidth={2} dot={false}/><Line type="monotone" dataKey="neto" name="Resultado mensual" stroke="#38bdf8" strokeWidth={2} dot={false}/><Line type="monotone" dataKey="saldoFinal" name="Saldo acumulado" stroke="#f59e0b" strokeWidth={3} dot={false}/></LineChart></ResponsiveContainer></div></article>
           </section>
           <GeneralBalanceTable openingBalance={openingBalance} incomeByCategory={incomeByCategory} expenseByCategory={byCategory} closingBalance={closingBalance} monthlySavingsDeposits={monthlySavingsDeposits}/>
         </>}
@@ -1443,7 +1497,8 @@ export default function App() {
       </section>}
 
       {tab === 'control' && <section className="panel control-card"><div className="section-icon"><FolderCog /></div><h2>Control de categorías</h2><p>Las categorías de ingresos y egresos se administran por separado y aparecen automáticamente en los formularios de carga.</p><CategoryForm onAdd={addCategory} /><div className="category-columns"><div><h3>Ingresos ({categories.filter(c => c.type === 'income').length})</h3>{categories.filter(c => c.type === 'income').map(c => <div className="category-row" key={c.id}><span>{c.name}</span><button className="ghost danger" onClick={() => removeCategory(c)}><Trash2 /></button></div>)}</div><div><h3>Egresos ({categories.filter(c => c.type === 'expense').length})</h3>{categories.filter(c => c.type === 'expense').map(c => <div className="category-row" key={c.id}><span>{c.name}</span><button className="ghost danger" onClick={() => removeCategory(c)}><Trash2 /></button></div>)}</div></div></section>}
-    </main>
+      </main>
+    </div>
     <MovementModal open={modal} onClose={() => { setModal(false); setEditing(null) }} onSave={save} accounts={accounts} categories={categories} editing={editing} defaultType={newType} />
   </div>
 }
