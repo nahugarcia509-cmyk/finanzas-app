@@ -236,13 +236,14 @@ export default function App() {
   }
 
   const loadAll = async () => {
+    if (!session?.user?.id) return
     setLoading(true)
     try {
       await supabase.rpc('bootstrap_user')
       let [a, c, m] = await Promise.all([
-        supabase.from('accounts').select('*').order('name'),
-        supabase.from('categories').select('*').order('type').order('name'),
-        supabase.from('transactions').select('*,accounts(name),categories(name)').order('date', { ascending: false })
+        supabase.from('accounts').select('*').eq('user_id', session.user.id).order('name'),
+        supabase.from('categories').select('*').eq('user_id', session.user.id).order('type').order('name'),
+        supabase.from('transactions').select('*,accounts(name),categories(name)').eq('user_id', session.user.id).order('date', { ascending: false })
       ])
       if (a.error || c.error || m.error) throw new Error(a.error?.message || c.error?.message || m.error?.message)
       setAccounts(a.data || [])
@@ -264,7 +265,7 @@ export default function App() {
       return
     }
     const payload = { type: form.type, date: form.date, description: form.description, amount: form.amount, account_id: form.account_id, category_id: form.category_id || null, notes: form.notes || null, user_id: session.user.id }
-    const q = editing ? supabase.from('transactions').update(payload).eq('id', editing.id) : supabase.from('transactions').insert(payload)
+    const q = editing ? supabase.from('transactions').update(payload).eq('id', editing.id).eq('user_id', session.user.id) : supabase.from('transactions').insert(payload)
     const { error } = await q
     if (error) setNotice(error.message)
     else { setModal(false); setEditing(null); loadAll() }
@@ -412,7 +413,7 @@ export default function App() {
       const next = movements.filter(x => x.id !== id)
       setMovements(next); localStorage.setItem('finance_demo', JSON.stringify(next)); return
     }
-    const { error } = await supabase.from('transactions').delete().eq('id', id)
+    const { error } = await supabase.from('transactions').delete().eq('id', id).eq('user_id', session.user.id)
     if (error) setNotice(error.message); else loadAll()
   }
 
@@ -432,14 +433,14 @@ export default function App() {
       const next = categories.filter(c => c.id !== cat.id)
       setCategories(next); localStorage.setItem('finance_categories', JSON.stringify(next)); return
     }
-    const { error } = await supabase.from('categories').delete().eq('id', cat.id)
+    const { error } = await supabase.from('categories').delete().eq('id', cat.id).eq('user_id', session.user.id)
     if (error) setNotice(error.message); else loadAll()
   }
 
   const DATA_START = '2026-04'
   // Saldo final real de abril según la planilla original.
   // Desde mayo, este importe se arrastra como saldo del mes anterior.
-  const APRIL_CLOSING_BALANCE = 266941.14
+  const APRIL_CLOSING_BALANCE = session?.user?.email?.toLowerCase() === 'nahu.garcia.509@gmail.com' ? 266941.14 : 0
   const monthRows = useMemo(() => movements.filter(m => m.date?.startsWith(month)), [movements, month])
   const visibleMonthRows = useMemo(() => monthRows, [monthRows])
   const searchedRows = useMemo(
