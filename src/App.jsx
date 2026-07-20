@@ -511,14 +511,15 @@ export default function App() {
       return
     }
 
-    const query = accountForm.id
+    const wasEditing = Boolean(accountForm.id)
+    const query = wasEditing
       ? supabase.from('accounts').update({ name, initial_balance: initialBalance }).eq('id', accountForm.id).eq('user_id', session.user.id)
       : supabase.from('accounts').insert({ name, initial_balance: initialBalance, user_id: session.user.id })
     const { error } = await query
     if (error) return setNotice(error.message)
     setAccountForm({ id: null, name: '', initial_balance: '' })
     await loadAll()
-    setNotice(accountForm.id ? 'Cuenta actualizada.' : 'Cuenta creada.')
+    setNotice(wasEditing ? 'Cuenta actualizada.' : 'Cuenta creada.')
   }
 
   const removeAccount = (account) => {
@@ -526,19 +527,44 @@ export default function App() {
     requestConfirm({
       title: 'Eliminar cuenta',
       message: linked
-        ? `La cuenta “${account.name}” tiene ${linked} movimientos asociados y no puede eliminarse hasta reasignarlos.`
+        ? `Se eliminará la cuenta “${account.name}”. Sus ${linked} movimientos se conservarán, pero quedarán sin una cuenta asignada.`
         : `Se eliminará la cuenta “${account.name}”. Esta acción no se puede deshacer.`,
-      confirmLabel: linked ? 'Entendido' : 'Eliminar cuenta',
-      tone: linked ? 'info' : 'danger',
+      confirmLabel: 'Eliminar cuenta',
+      tone: 'danger',
       onConfirm: async () => {
-        if (linked) return
         if (!configured) {
+          setMovements(current => current.map(m => m.account_id === account.id ? { ...m, account_id: null, accounts: null } : m))
           setAccounts(current => current.filter(a => a.id !== account.id))
+          setAccountForm(current => current.id === account.id ? { id: null, name: '', initial_balance: '' } : current)
           return
         }
-        const { error } = await supabase.from('accounts').delete().eq('id', account.id).eq('user_id', session.user.id)
-        if (error) setNotice(error.message)
-        else await loadAll()
+
+        if (linked) {
+          const { error: unlinkError } = await supabase
+            .from('transactions')
+            .update({ account_id: null })
+            .eq('account_id', account.id)
+            .eq('user_id', session.user.id)
+          if (unlinkError) {
+            setNotice(`No se pudo desvincular la cuenta de sus movimientos: ${unlinkError.message}`)
+            return
+          }
+        }
+
+        const { error } = await supabase
+          .from('accounts')
+          .delete()
+          .eq('id', account.id)
+          .eq('user_id', session.user.id)
+
+        if (error) {
+          setNotice(error.message)
+          return
+        }
+
+        setAccountForm(current => current.id === account.id ? { id: null, name: '', initial_balance: '' } : current)
+        await loadAll()
+        setNotice('Cuenta eliminada. Los movimientos asociados se conservaron sin cuenta asignada.')
       }
     })
   }
@@ -573,9 +599,7 @@ export default function App() {
 
   const accountBalance = (accountId) => {
     const account = accounts.find(a => a.id === accountId)
-    return (Number(account?.initial_balance) || 0) + movements
-      .filter(m => m.account_id === accountId)
-      .reduce((sum, m) => sum + (m.type === 'income' ? Number(m.amount) : -Number(m.amount)), 0)
+    return Number(account?.initial_balance) || 0
   }
 
   const openNew = (type) => { setEditing(null); setNewType(type); setModal(true) }
@@ -2546,7 +2570,7 @@ export default function App() {
         </div>
 
         <div className="control-subpanel account-management">
-          <div className="control-subpanel-title"><WalletCards /><div><h3>Cuentas</h3><span>Crear, editar y eliminar cuentas sin usar monedas que no participan de los cálculos</span></div></div>
+          <div className="control-subpanel-title"><WalletCards /><div><h3>Cuentas</h3><span>Crear, editar y eliminar cuentas. El saldo se carga y modifica manualmente</span></div></div>
           <form className="account-management-form" onSubmit={saveAccountRecord}>
             <label>Nombre de la cuenta<input value={accountForm.name} onChange={e => setAccountForm(current => ({ ...current, name: e.target.value }))} placeholder="Ej. Banco o efectivo" /></label>
             <label>Saldo inicial<input type="number" step="0.01" value={accountForm.initial_balance} onChange={e => setAccountForm(current => ({ ...current, initial_balance: e.target.value }))} placeholder="0,00" /></label>
@@ -2555,7 +2579,7 @@ export default function App() {
           </form>
           <div className="account-cards-grid">
             {accounts.map(account => <article className="account-card" key={account.id}>
-              <div><b>{account.name}</b><small>Saldo calculado</small></div>
+              <div><b>{account.name}</b><small>Saldo manual</small></div>
               <strong>{money(accountBalance(account.id))}</strong>
               <div className="row-actions">
                 <button type="button" className="ghost" onClick={() => setAccountForm({ id: account.id, name: account.name, initial_balance: account.initial_balance ?? '' })}><Pencil /></button>
