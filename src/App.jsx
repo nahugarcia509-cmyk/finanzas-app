@@ -348,6 +348,7 @@ export default function App() {
         sidebar_open: sidebarOpen,
         selected_income_categories: selectedIncomeCategories,
         selected_reserve_categories: selectedReserveCategories,
+        selected_forecast_categories: selectedForecastCategories,
         savings_goals: savingsGoals,
         updated_at: new Date().toISOString()
       }
@@ -356,7 +357,7 @@ export default function App() {
     }, 350)
 
     return () => window.clearTimeout(timer)
-  }, [configured, session?.user?.id, preferencesLoaded, theme, backgroundTheme, sidebarOpen, selectedIncomeCategories, selectedReserveCategories, savingsGoals])
+  }, [configured, session?.user?.id, preferencesLoaded, theme, backgroundTheme, sidebarOpen, selectedIncomeCategories, selectedReserveCategories, selectedForecastCategories, savingsGoals])
 
   useEffect(() => {
     const media = window.matchMedia('(max-width: 760px)')
@@ -439,7 +440,7 @@ export default function App() {
         supabase.from('accounts').select('*').eq('user_id', currentUserId).order('name'),
         supabase.from('categories').select('*').eq('user_id', currentUserId).order('type').order('name'),
         supabase.from('transactions').select('*,accounts(name),categories(name)').eq('user_id', currentUserId).order('date', { ascending: false }),
-        supabase.from('user_settings').select('opening_balance_month,opening_balance_amount,theme,background_theme,sidebar_open,selected_income_categories,selected_reserve_categories,savings_goals').eq('user_id', currentUserId).maybeSingle()
+        supabase.from('user_settings').select('opening_balance_month,opening_balance_amount,theme,background_theme,sidebar_open,selected_income_categories,selected_reserve_categories,selected_forecast_categories,savings_goals').eq('user_id', currentUserId).maybeSingle()
       ])
 
       let [a, c, m, settingsResult] = await fetchUserData()
@@ -463,7 +464,7 @@ export default function App() {
       const ownAccounts = (a.data || []).filter(row => row.user_id === currentUserId)
       const ownCategories = (c.data || []).filter(row => row.user_id === currentUserId)
       const ownMovements = (m.data || []).filter(row => row.user_id === currentUserId)
-      const loadedSettings = settingsResult.data || { opening_balance_month: '', opening_balance_amount: 0, theme: 'blue', background_theme: 'navy', sidebar_open: true, selected_income_categories: null, selected_reserve_categories: null, savings_goals: [] }
+      const loadedSettings = settingsResult.data || { opening_balance_month: '', opening_balance_amount: 0, theme: 'blue', background_theme: 'navy', sidebar_open: true, selected_income_categories: null, selected_reserve_categories: null, selected_forecast_categories: null, savings_goals: [] }
 
       setAccounts(ownAccounts)
       setCategories(ownCategories)
@@ -478,6 +479,7 @@ export default function App() {
       setSidebarOpen(loadedSettings.sidebar_open !== false)
       setSelectedIncomeCategories(Array.isArray(loadedSettings.selected_income_categories) ? loadedSettings.selected_income_categories : null)
       setSelectedReserveCategories(Array.isArray(loadedSettings.selected_reserve_categories) ? loadedSettings.selected_reserve_categories : null)
+      setSelectedForecastCategories(Array.isArray(loadedSettings.selected_forecast_categories) ? loadedSettings.selected_forecast_categories : null)
       setSavingsGoals(Array.isArray(loadedSettings.savings_goals) ? loadedSettings.savings_goals : [])
       setPreferencesLoaded(true)
       setTransferForm(current => ({
@@ -1326,16 +1328,18 @@ export default function App() {
   const previousIncome = previousMonthRows.filter(x => x.type === 'income').reduce((s,x)=>s+Number(x.amount),0)
   const previousExpense = previousMonthRows.filter(x => x.type === 'expense' && savingsKind(x) !== 'deposit').reduce((s,x)=>s+Number(x.amount),0)
   const forecastAvailableCategories = useMemo(
-    () => [...new Set(expenseRowsWithoutSavings.map(item => item.categories?.name || 'Sin categoría'))].sort(),
-    [expenseRowsWithoutSavings]
+    () => [...new Set(
+      financialMovements
+        .filter(item => item.type === 'expense' && savingsKind(item) !== 'deposit')
+        .map(item => item.categories?.name || 'Sin categoría')
+    )].sort(),
+    [financialMovements]
   )
 
   useEffect(() => {
     setSelectedForecastCategories(current => {
       if (!Array.isArray(current)) return forecastAvailableCategories
-      const valid = current.filter(name => forecastAvailableCategories.includes(name))
-      const missing = forecastAvailableCategories.filter(name => !current.includes(name))
-      return [...valid, ...missing]
+      return current.filter(name => forecastAvailableCategories.includes(name))
     })
   }, [forecastAvailableCategories])
 
@@ -1355,13 +1359,76 @@ export default function App() {
     [forecastExpenseRows]
   )
 
-  const forecastExpenseDays = new Set(forecastExpenseRows.map(item => item.date)).size
   const currentDayForForecast = month === monthKey()
     ? Math.max(new Date().getDate(), 1)
     : daysInSelectedMonth
-  const forecastExpense = forecastExpenseDays
+
+  const forecastPaceExpense = forecastExpenseCurrent > 0
     ? (forecastExpenseCurrent / currentDayForForecast) * daysInSelectedMonth
     : 0
+
+  // Detecta categorías recurrentes que aparecieron en fechas similares en al menos
+  // dos de los últimos cuatro meses. Si todavía no se registraron por completo en
+  // el mes seleccionado, agrega el importe pendiente esperado a la estimación.
+  const recurringForecastDetails = useMemo(() => {
+    const priorMonths = [...new Set(
+      financialMovements
+        .map(item => item.date?.slice(0, 7))
+        .filter(key => key && key < month)
+    )].sort().slice(-4)
+
+    if (priorMonths.length < 2 || !forecastIncludedCategories.length) return []
+
+    const grouped = {}
+    financialMovements.forEach(item => {
+      if (item.type !== 'expense' || savingsKind(item) === 'deposit') return
+      const monthKeyValue = item.date?.slice(0, 7)
+      if (!priorMonths.includes(monthKeyValue)) return
+      const category = item.categories?.name || 'Sin categoría'
+      if (!forecastIncludedCategories.includes(category)) return
+      const day = Number(item.date?.slice(8, 10)) || 1
+      grouped[category] ??= {}
+      grouped[category][monthKeyValue] ??= { total: 0, daySum: 0, count: 0 }
+      grouped[category][monthKeyValue].total += Number(item.amount) || 0
+      grouped[category][monthKeyValue].daySum += day
+      grouped[category][monthKeyValue].count += 1
+    })
+
+    const currentByCategory = forecastExpenseRows.reduce((out, item) => {
+      const category = item.categories?.name || 'Sin categoría'
+      out[category] = (out[category] || 0) + Number(item.amount || 0)
+      return out
+    }, {})
+
+    return Object.entries(grouped).flatMap(([category, months]) => {
+      const entries = Object.values(months)
+      if (entries.length < 2) return []
+      const averageDays = entries.map(entry => entry.daySum / Math.max(entry.count, 1))
+      const dateSpread = Math.max(...averageDays) - Math.min(...averageDays)
+      if (dateSpread > 10) return []
+
+      const expectedAmount = entries.reduce((sum, entry) => sum + entry.total, 0) / entries.length
+      const currentAmount = currentByCategory[category] || 0
+      const pendingAmount = Math.max(expectedAmount - currentAmount, 0)
+      if (pendingAmount <= 0) return []
+
+      const expectedDay = Math.round(averageDays.reduce((sum, day) => sum + day, 0) / averageDays.length)
+      return [{ category, expectedAmount, currentAmount, pendingAmount, expectedDay, activeMonths: entries.length }]
+    }).sort((a, b) => b.pendingAmount - a.pendingAmount)
+  }, [financialMovements, month, forecastIncludedCategories, forecastExpenseRows])
+
+  const recurringForecastPending = useMemo(
+    () => recurringForecastDetails.reduce((sum, item) => sum + item.pendingAmount, 0),
+    [recurringForecastDetails]
+  )
+
+  const forecastExpense = Math.max(
+    forecastPaceExpense,
+    forecastExpenseCurrent + recurringForecastPending
+  )
+
+  // Los aportes a ahorros se descuentan del saldo final, pero no se extrapolan
+  // ni participan del ritmo de gasto proyectado.
   const forecastClosing = openingBalance + income - forecastExpense - monthlySavingsDeposits
 
   const openForecastCategoryModal = () => {
@@ -2252,13 +2319,15 @@ export default function App() {
 
           <article className="panel home-lower-panel prediction-modern">
             <div className="panel-title">
-              <div><ChartInfoTitle title="Predicción al cierre del mes" text="Proyecta el saldo de cierre usando el ritmo de ingresos y egresos registrado hasta el momento. La estimación cambia con cada nuevo movimiento." /><span>Estimación basada en el ritmo actual</span></div>
+              <div><ChartInfoTitle title="Predicción al cierre del mes" text="Proyecta el saldo de cierre combinando el ritmo de gastos actual con egresos recurrentes detectados en meses anteriores. Los aportes a ahorros se descuentan del saldo, pero no se extrapolan como gasto futuro." /><span>Estimación basada en el ritmo actual</span></div>
             </div>
             <div className="prediction-layout">
               <div className="prediction-copy">
                 <strong className={forecastClosing>=0?'positive':'negative'}>{money(forecastClosing)}</strong>
                 <p>Saldo estimado al finalizar el mes seleccionado.</p>
                 <small>Gasto proyectado: {money(forecastExpense)}</small>
+                <small>Ahorros ya descontados: {money(monthlySavingsDeposits)}</small>
+                <small>Recurrentes pendientes estimados: {money(recurringForecastPending)}</small>
                 <button type="button" className="secondary forecast-category-trigger" onClick={openForecastCategoryModal}>
                   <Settings2 /> Seleccionar categorías
                 </button>
@@ -2894,7 +2963,7 @@ export default function App() {
         <header>
           <div>
             <h3 id="forecast-category-title">Categorías para la predicción</h3>
-            <p>Seleccione los egresos que deben participar en el cálculo del saldo estimado al cierre del mes.</p>
+            <p>Seleccione las categorías que participan en la proyección. La selección queda guardada hasta que vuelva a modificarla. También se buscan gastos recurrentes de meses anteriores dentro de estas categorías.</p>
           </div>
           <button type="button" className="ghost icon-close" onClick={() => setForecastCategoryModalOpen(false)} aria-label="Cerrar"><X /></button>
         </header>
