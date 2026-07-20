@@ -1427,9 +1427,12 @@ export default function App() {
     forecastExpenseCurrent + recurringForecastPending
   )
 
-  // Los aportes a ahorros se descuentan del saldo final, pero no se extrapolan
-  // ni participan del ritmo de gasto proyectado.
-  const forecastClosing = openingBalance + income - forecastExpense - monthlySavingsDeposits
+  // El saldo actual del mes (closingBalance) ya incluye todos los movimientos reales,
+  // incluidos los aportes a ahorros. Para la predicción sólo se descuentan los gastos
+  // que todavía faltan hasta alcanzar el gasto total proyectado. De esta forma los
+  // ahorros se descuentan una sola vez y nunca se inflan artificialmente en la proyección.
+  const forecastRemainingExpense = Math.max(forecastExpense - forecastExpenseCurrent, 0)
+  const forecastClosing = closingBalance - forecastRemainingExpense
 
   const openForecastCategoryModal = () => {
     setForecastCategoryDraft([...forecastIncludedCategories])
@@ -2148,6 +2151,12 @@ export default function App() {
       .confirm-backdrop { position:fixed; inset:0; z-index:1000000; background:rgba(1,8,18,.72); backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; padding:20px; }
       .forecast-category-trigger { display:inline-flex; align-items:center; gap:8px; margin-top:16px; width:max-content; max-width:100%; }
       .forecast-category-trigger svg { width:17px; height:17px; }
+      .forecast-category-trigger { margin-top:12px; }
+      .forecast-summary-list { display:grid; gap:7px; margin:14px 0 4px; width:100%; max-width:360px; }
+      .forecast-summary-list > div { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; padding:7px 0; border-bottom:1px dashed rgba(116,151,187,.28); }
+      .forecast-summary-list > div:last-child { border-bottom:0; }
+      .forecast-summary-list span { color:#8fb0d3; font-size:12px; line-height:1.35; }
+      .forecast-summary-list b { color:#eef7ff; font-size:12px; text-align:right; white-space:nowrap; }
       .forecast-category-summary { display:block; margin-top:8px; color:#8fb0d3; font-size:12px; line-height:1.4; }
       .forecast-category-dialog { width:min(560px,100%); max-height:min(78vh,720px); display:flex; flex-direction:column; border:1px solid #365675; border-radius:16px; background:#0b1b2f; box-shadow:0 24px 70px rgba(0,0,0,.55); overflow:hidden; }
       .forecast-category-dialog header { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; padding:20px 20px 14px; border-bottom:1px solid #29405c; }
@@ -2325,9 +2334,14 @@ export default function App() {
               <div className="prediction-copy">
                 <strong className={forecastClosing>=0?'positive':'negative'}>{money(forecastClosing)}</strong>
                 <p>Saldo estimado al finalizar el mes seleccionado.</p>
-                <small>Gasto proyectado: {money(forecastExpense)}</small>
-                <small>Ahorros ya descontados: {money(monthlySavingsDeposits)}</small>
-                <small>Recurrentes pendientes estimados: {money(recurringForecastPending)}</small>
+                <div className="forecast-summary-list">
+                  <div><span>Saldo actual</span><b>{money(closingBalance)}</b></div>
+                  <div><span>Gastos actuales considerados</span><b>{money(forecastExpenseCurrent)}</b></div>
+                  <div><span>Gasto total proyectado</span><b>{money(forecastExpense)}</b></div>
+                  <div><span>Gastos futuros pendientes</span><b>{money(forecastRemainingExpense)}</b></div>
+                  <div><span>Ahorros ya descontados del saldo</span><b>{money(monthlySavingsDeposits)}</b></div>
+                  <div><span>Recurrentes pendientes estimados</span><b>{money(recurringForecastPending)}</b></div>
+                </div>
                 <button type="button" className="secondary forecast-category-trigger" onClick={openForecastCategoryModal}>
                   <Settings2 /> Seleccionar categorías
                 </button>
