@@ -262,6 +262,8 @@ export default function App() {
   const [transferForm, setTransferForm] = useState({ from_account_id: '', to_account_id: '', amount: '', date: new Date().toISOString().slice(0, 10), description: '' })
   const [confirmDialog, setConfirmDialog] = useState(null)
   const [preferencesLoaded, setPreferencesLoaded] = useState(false)
+  const [isMobileViewport, setIsMobileViewport] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 760px)').matches)
+  const [mobileQuickMode, setMobileQuickMode] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 760px)').matches)
 
   useEffect(() => {
     if (!configured) {
@@ -355,6 +357,22 @@ export default function App() {
 
     return () => window.clearTimeout(timer)
   }, [configured, session?.user?.id, preferencesLoaded, theme, backgroundTheme, sidebarOpen, selectedIncomeCategories, selectedReserveCategories, savingsGoals])
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 760px)')
+    const syncViewport = (event) => {
+      const matches = event.matches
+      setIsMobileViewport(matches)
+      if (!matches) setMobileQuickMode(false)
+    }
+    setIsMobileViewport(media.matches)
+    if (media.addEventListener) media.addEventListener('change', syncViewport)
+    else media.addListener(syncViewport)
+    return () => {
+      if (media.removeEventListener) media.removeEventListener('change', syncViewport)
+      else media.removeListener(syncViewport)
+    }
+  }, [])
 
   useEffect(() => {
     const onKey = (e) => {
@@ -1360,6 +1378,86 @@ export default function App() {
   if (loading) return <div className="center"><RefreshCw className="spin" /> Cargando finanzas…</div>
   if (configured && !session) return <Auth supabase={supabase} />
 
+  if (isMobileViewport && mobileQuickMode) {
+    const recentMobileMovements = [...financialMovements]
+      .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
+      .slice(0, 5)
+
+    return <div className={`mobile-quick-app theme-${theme} background-${backgroundTheme}`}>
+      <style>{`
+        .mobile-quick-app, .mobile-quick-app * { box-sizing:border-box; }
+        .mobile-quick-app { min-height:100vh; padding:16px; background:#071524; color:#eef7ff; font-family:inherit; }
+        .mobile-quick-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:18px; }
+        .mobile-quick-brand { display:flex; align-items:center; gap:11px; min-width:0; }
+        .mobile-quick-brand > div:first-child { width:42px; height:42px; border-radius:12px; display:grid; place-items:center; background:linear-gradient(135deg,#38bdf8,#6366f1); }
+        .mobile-quick-brand svg { width:23px; height:23px; }
+        .mobile-quick-brand b { display:block; font-size:18px; }
+        .mobile-quick-brand small { display:block; color:#8aa7c7; font-size:11px; }
+        .mobile-full-button { border:1px solid #365675; background:#0d1c30; color:#dbeafe; border-radius:10px; padding:9px 11px; font-weight:700; }
+        .mobile-quick-title { margin:0 0 4px; font-size:24px; }
+        .mobile-quick-subtitle { margin:0 0 16px; color:#8aa7c7; }
+        .mobile-quick-kpis { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px; }
+        .mobile-quick-card { position:relative; min-height:108px; padding:14px; border:1px solid #29405c; border-radius:14px; background:#0d1c30; overflow:hidden; }
+        .mobile-quick-card span { display:block; color:#8fb0d3; font-size:12px; margin-bottom:8px; }
+        .mobile-quick-card strong { display:block; font-size:21px; line-height:1.15; padding-right:28px; }
+        .mobile-quick-card svg { position:absolute; right:12px; bottom:12px; width:24px; height:24px; color:#6f91b4; }
+        .mobile-quick-card.balance { grid-column:1 / -1; border-color:rgba(56,189,248,.55); }
+        .mobile-quick-card.income { border-color:rgba(74,222,128,.5); }
+        .mobile-quick-card.expense { border-color:rgba(251,113,133,.5); }
+        .mobile-quick-card.income strong { color:#4ade80; }
+        .mobile-quick-card.expense strong { color:#fb7185; }
+        .mobile-quick-actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:14px 0; }
+        .mobile-quick-actions button { min-height:58px; border:0; border-radius:14px; font-size:15px; font-weight:900; display:flex; align-items:center; justify-content:center; gap:8px; }
+        .mobile-quick-actions button:first-child { background:#153824; color:#4ade80; border:1px solid rgba(74,222,128,.55); }
+        .mobile-quick-actions button:last-child { background:#3a1922; color:#fb7185; border:1px solid rgba(251,113,133,.55); }
+        .mobile-quick-actions svg { width:22px; height:22px; }
+        .mobile-recent { border:1px solid #29405c; border-radius:14px; background:#0d1c30; padding:14px; }
+        .mobile-recent h3 { margin:0 0 12px; font-size:16px; }
+        .mobile-recent-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; padding:10px 0; border-top:1px solid #21364e; }
+        .mobile-recent-row:first-of-type { border-top:0; }
+        .mobile-recent-row b { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .mobile-recent-row small { color:#8aa7c7; }
+        .mobile-recent-row strong { align-self:center; white-space:nowrap; }
+        .mobile-empty { color:#8aa7c7; text-align:center; padding:16px 0; }
+        .mobile-quick-app .notice { margin:0 0 12px; }
+        @media (max-width:390px) { .mobile-quick-kpis { grid-template-columns:1fr; } .mobile-quick-card.balance { grid-column:auto; } .mobile-quick-actions { grid-template-columns:1fr; } }
+      `}</style>
+      <div className="mobile-quick-head">
+        <div className="mobile-quick-brand"><div><WalletCards /></div><div><b>Mis Finanzas</b><small>Vista rápida</small></div></div>
+        <button className="mobile-full-button" type="button" onClick={() => setMobileQuickMode(false)}>Vista completa</button>
+      </div>
+      {notice && <div className="notice" onClick={() => setNotice('')}>{notice}</div>}
+      <h1 className="mobile-quick-title">Resumen del mes</h1>
+      <p className="mobile-quick-subtitle">{month}</p>
+      <section className="mobile-quick-kpis">
+        <article className="mobile-quick-card balance"><span>Saldo disponible</span><strong>{money(closingBalance)}</strong><WalletCards /></article>
+        <article className="mobile-quick-card income"><span>Ingresos del mes</span><strong>{money(income)}</strong><ArrowUpCircle /></article>
+        <article className="mobile-quick-card expense"><span>Egresos del mes</span><strong>{money(expenseWithoutSavings)}</strong><ArrowDownCircle /></article>
+      </section>
+      <section className="mobile-quick-actions">
+        <button type="button" onClick={() => openNew('income')}><ArrowUpCircle /> Registrar ingreso</button>
+        <button type="button" onClick={() => openNew('expense')}><ArrowDownCircle /> Registrar egreso</button>
+      </section>
+      <section className="mobile-recent">
+        <h3>Últimos movimientos</h3>
+        {recentMobileMovements.map(item => <div className="mobile-recent-row" key={item.id}>
+          <div><b>{item.description || 'Sin concepto'}</b><small>{item.date?.split('-').reverse().join('/')} · {item.categories?.name || (item.type === 'income' ? 'Ingreso' : 'Egreso')}</small></div>
+          <strong className={item.type === 'income' ? 'positive' : 'negative'}>{item.type === 'income' ? '+' : '-'}{money(item.amount)}</strong>
+        </div>)}
+        {!recentMobileMovements.length && <div className="mobile-empty">Todavía no existen movimientos.</div>}
+      </section>
+      {modal && <MovementModal
+        open={modal}
+        type={newType}
+        accounts={accounts}
+        categories={categories}
+        movement={editing}
+        onClose={() => { setModal(false); setEditing(null) }}
+        onSave={save}
+      />}
+    </div>
+  }
+
   return <div className={`app theme-${theme} background-${backgroundTheme}`}>
     <style>{`
       .kpis.extended article[title] { cursor: help; position: relative; }
@@ -1500,6 +1598,8 @@ export default function App() {
       .floating-settings-button.active { background:#ffffff !important; color:#0c1b2f !important; }
       header .header-actions { padding-right:70px; }
       @media (max-width:700px) { .floating-settings-button { top:12px; right:12px; width:46px; height:46px; min-width:46px; } header .header-actions { padding-right:58px; } }
+      .mobile-quick-return { display:none !important; }
+      @media (max-width:760px) { .mobile-quick-return { display:inline-flex !important; } }
       /* Sistema unificado de ayuda e iconos */
       .kpi-info-card, .kpis article { position:relative !important; overflow:visible !important; padding:18px 52px 18px 18px !important; min-height:116px; }
       .kpi-info-head { display:block !important; padding-right:0 !important; min-height:auto !important; }
@@ -1958,7 +2058,7 @@ export default function App() {
       @media (max-width:900px) { .control-sections-grid { grid-template-columns:1fr; } .transfer-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .account-management-form { grid-template-columns:1fr 1fr; } .skeleton-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
       @media (max-width:600px) { .control-form-grid.two-cols, .transfer-grid, .account-management-form { grid-template-columns:1fr; } .transfer-description { grid-column:1; } .skeleton-grid { grid-template-columns:1fr; } }
     `}</style>
-    <header><div className="brand"><div className="brand-icon"><WalletCards /></div><div><b>Mis Finanzas</b><small>Información sincronizada y siempre disponible</small></div></div><div className="header-actions"><button className={`ghost header-icon ${filtersOpen || Object.values(filters).some(v => v && v !== 'all') ? 'active' : ''}`} onClick={() => { setFilterDraft(filters); setFiltersOpen(true) }} title="Filtros"><SlidersHorizontal />{Object.values(filters).some(v => v && v !== 'all') && <span className="filter-dot" />}</button><button className={`ghost header-icon ${notificationsOpen ? 'active' : ''}`} onClick={() => setNotificationsOpen(true)} title="Notificaciones"><Bell />{notifications.length > 0 && <span className="notification-badge">{notifications.length}</span>}</button><button className="secondary" onClick={() => openNew('income')}><ArrowUpCircle /> Ingreso</button><button onClick={() => openNew('expense')}><ArrowDownCircle /> Egreso</button>{configured && <button className="ghost" onClick={() => supabase.auth.signOut()} title="Cerrar sesión" aria-label="Cerrar sesión"><LogOut /></button>}</div></header>
+    <header><div className="brand"><div className="brand-icon"><WalletCards /></div><div><b>Mis Finanzas</b><small>Información sincronizada y siempre disponible</small></div></div><div className="header-actions"><button className={`ghost header-icon ${filtersOpen || Object.values(filters).some(v => v && v !== 'all') ? 'active' : ''}`} onClick={() => { setFilterDraft(filters); setFiltersOpen(true) }} title="Filtros"><SlidersHorizontal />{Object.values(filters).some(v => v && v !== 'all') && <span className="filter-dot" />}</button><button className={`ghost header-icon ${notificationsOpen ? 'active' : ''}`} onClick={() => setNotificationsOpen(true)} title="Notificaciones"><Bell />{notifications.length > 0 && <span className="notification-badge">{notifications.length}</span>}</button><button className="secondary" onClick={() => openNew('income')}><ArrowUpCircle /> Ingreso</button><button onClick={() => openNew('expense')}><ArrowDownCircle /> Egreso</button>{isMobileViewport && <button className="ghost mobile-quick-return" onClick={() => setMobileQuickMode(true)} title="Vista rápida"><Home /></button>}{configured && <button className="ghost" onClick={() => supabase.auth.signOut()} title="Cerrar sesión" aria-label="Cerrar sesión"><LogOut /></button>}</div></header>
     {filtersOpen && <div className="overlay-panel" onMouseDown={() => setFiltersOpen(false)}>
       <aside className="drawer" onMouseDown={e => e.stopPropagation()}>
         <div className="drawer-head"><div><h2>Filtros</h2><small>Aplicar filtros a los movimientos del mes seleccionado</small></div><button className="ghost" onClick={() => setFiltersOpen(false)}><X /></button></div>
