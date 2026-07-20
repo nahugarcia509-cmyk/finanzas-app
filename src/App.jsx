@@ -1796,10 +1796,77 @@ export default function App() {
       .goal-stat-grid > div { display:flex; flex-direction:column; gap:5px; min-width:0; padding:10px; border:1px solid #263f5b; border-radius:10px; background:#0a192b; }
       .goal-stat-grid span { color:#7897b7; font-size:11px; }
       .goal-stat-grid b { color:#fff; font-size:13px; overflow-wrap:anywhere; }
-      .goal-actions { align-self:flex-start; }
-      .goal-actions button { border-radius:8px; }
+      .goal-actions {
+        position:absolute;
+        top:16px;
+        right:16px;
+        z-index:3;
+        display:flex;
+        flex-direction:column;
+        align-items:center;
+        gap:4px;
+        width:34px;
+      }
+      .goal-actions button {
+        width:32px !important;
+        height:32px !important;
+        min-width:32px !important;
+        padding:0 !important;
+        border-radius:8px;
+        display:flex !important;
+        align-items:center;
+        justify-content:center;
+      }
+      .goal-actions button svg { width:17px !important; height:17px !important; }
+      .goal-card { padding:18px 66px 18px 18px !important; }
+      .goal-card header {
+        display:block !important;
+        min-height:76px;
+        padding-right:4px;
+        overflow:visible;
+      }
+      .goal-card-main { width:100%; min-width:0; overflow:visible; }
+      .goal-title-line {
+        display:flex;
+        align-items:flex-start;
+        justify-content:flex-start;
+        gap:8px;
+        flex-wrap:wrap;
+        padding-right:2px;
+      }
+      .goal-title-line h3 {
+        flex:1 1 180px;
+        min-width:0;
+        max-width:100%;
+        white-space:normal !important;
+        overflow:visible !important;
+        text-overflow:clip !important;
+        word-break:break-word;
+        overflow-wrap:anywhere;
+      }
+      .goal-priority { flex:0 0 auto; }
+      .goal-target {
+        display:grid;
+        grid-template-columns:auto minmax(0,1fr);
+        align-items:baseline;
+        gap:8px;
+        margin-top:9px;
+        min-width:0;
+      }
+      .goal-target strong {
+        min-width:0;
+        white-space:normal;
+        overflow-wrap:anywhere;
+      }
+      .goal-progress-head, .goal-progress, .goal-stat-grid { margin-right:-48px; }
       @media (max-width:1000px) { .goal-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
-      @media (max-width:650px) { .goal-grid { grid-template-columns:1fr; } .goal-stat-grid{grid-template-columns:1fr;} .goal-title-line{align-items:flex-start;} }
+      @media (max-width:650px) {
+        .goal-grid { grid-template-columns:1fr; }
+        .goal-stat-grid{grid-template-columns:1fr;}
+        .goal-card { padding:16px 58px 16px 16px !important; }
+        .goal-actions { top:14px; right:14px; }
+        .goal-progress-head, .goal-progress, .goal-stat-grid { margin-right:-42px; }
+      }
       .savings-account-form { display:grid !important; grid-template-columns:repeat(6,minmax(135px,1fr)); gap:12px !important; width:100%; }
       .savings-account-form .grow { grid-column:span 2; }
       .savings-account-form button { min-height:42px; }
@@ -1833,6 +1900,31 @@ export default function App() {
       .account-dashboard-header h2 { margin:0 0 4px; font-size:22px; }
       .account-dashboard-header p { margin:0; color:#8aa7c7; }
       .account-dashboard-kpis { grid-template-columns:repeat(4,minmax(0,1fr)) !important; }
+
+      /* Alineación uniforme de ayuda e iconos en todas las cards KPI */
+      .kpi-info-card {
+        position:relative !important;
+        padding:18px 62px 18px 18px !important;
+        overflow:visible !important;
+      }
+      .kpi-info-card .kpi-help {
+        top:16px !important;
+        right:18px !important;
+        left:auto !important;
+        bottom:auto !important;
+      }
+      .kpi-info-card .kpi-card-icon {
+        right:18px !important;
+        bottom:16px !important;
+        top:auto !important;
+        left:auto !important;
+      }
+      .kpi-info-card > strong,
+      .kpi-info-card > small,
+      .kpi-info-card .kpi-info-head {
+        max-width:calc(100% - 4px);
+        overflow-wrap:anywhere;
+      }
       .account-dashboard-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:14px; }
       .account-dashboard-chart { min-width:0; }
       .account-chart-body { display:grid; grid-template-columns:minmax(230px,.8fr) minmax(260px,1.2fr); align-items:center; gap:12px; }
