@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowDownCircle, ArrowUpCircle, CalendarDays, CircleDollarSign, FolderCog,
   LayoutDashboard, LogOut, Pencil, Plus, RefreshCw, Search, Settings, Settings2, Trash2,
@@ -16,15 +16,16 @@ import Auth from './components/Auth'
 import MovementModal from './components/MovementModal'
 
 const demoAccounts = [
-  { id: 'a1', name: 'Billetera', currency: 'ARS', initial_balance: 0 },
-  { id: 'a2', name: 'Banco', currency: 'ARS', initial_balance: 0 }
+  { id: 'a1', name: 'Billetera', initial_balance: 0 },
+  { id: 'a2', name: 'Banco', initial_balance: 0 }
 ]
 const initialDemoCategories = seedCategories.map((c, i) => ({ ...c, id: `seed-cat-${i}` }))
 const palette = ['#38bdf8', '#4ade80', '#f59e0b', '#fb7185', '#a78bfa', '#22d3ee', '#f97316', '#e879f9', '#84cc16', '#facc15']
 
-const OWNER_EMAIL = 'nahu.garcia.509@gmail.com'
 const SAVINGS_DEPOSIT = '[SAVINGS_DEPOSIT]'
 const SAVINGS_WITHDRAWAL = '[SAVINGS_WITHDRAWAL]'
+const TRANSFER_OUT = '[TRANSFER_OUT]'
+const TRANSFER_IN = '[TRANSFER_IN]'
 
 const isSavingsMovement = (movement) =>
   String(movement?.notes || '').includes(SAVINGS_DEPOSIT) ||
@@ -34,6 +35,10 @@ const savingsKind = (movement) =>
   String(movement?.notes || '').includes(SAVINGS_DEPOSIT) ? 'deposit' :
   String(movement?.notes || '').includes(SAVINGS_WITHDRAWAL) ? 'withdrawal' :
   null
+
+const isTransferMovement = (movement) =>
+  String(movement?.notes || '').includes(TRANSFER_OUT) ||
+  String(movement?.notes || '').includes(TRANSFER_IN)
 
 function CategoryForm({ onAdd }) {
   const [name, setName] = useState('')
@@ -267,6 +272,13 @@ export default function App() {
   const [repeatPassword, setRepeatPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [savingAccount, setSavingAccount] = useState(false)
+  const [dataLoading, setDataLoading] = useState(false)
+  const [userSettings, setUserSettings] = useState({ opening_balance_month: '', opening_balance_amount: 0 })
+  const [settingsDraft, setSettingsDraft] = useState({ opening_balance_month: '', opening_balance_amount: '' })
+  const [accountForm, setAccountForm] = useState({ id: null, name: '', initial_balance: '' })
+  const [transferForm, setTransferForm] = useState({ from_account_id: '', to_account_id: '', amount: '', date: new Date().toISOString().slice(0, 10), description: '' })
+  const [confirmDialog, setConfirmDialog] = useState(null)
+  const importFileRef = useRef(null)
 
   useEffect(() => {
     if (!configured) {
@@ -380,56 +392,261 @@ export default function App() {
 
   const loadAll = async () => {
     if (!session?.user?.id) return
-    setLoading(true)
+    setDataLoading(true)
     try {
       const currentUserId = session.user.id
-      const currentEmail = String(session.user.email || '').trim().toLowerCase()
-
       await supabase.rpc('bootstrap_user')
 
-      // Limpieza única de cargas heredadas que pudieron copiarse a usuarios secundarios.
-      // No vuelve a ejecutarse después de que el usuario empieza a cargar sus propios datos.
-      if (currentEmail !== OWNER_EMAIL) {
-        const cleanupKey = `finance_clean_user_${currentUserId}`
-        if (!localStorage.getItem(cleanupKey)) {
-          const { error: cleanupError } = await supabase
-            .from('transactions')
-            .delete()
-            .eq('user_id', currentUserId)
-          if (cleanupError) throw cleanupError
-          localStorage.setItem(cleanupKey, '1')
-          localStorage.removeItem('finance_savings_goals')
-          localStorage.removeItem('finance_selected_reserve_categories')
-          localStorage.removeItem('finance_selected_income_categories')
-          setSavingsGoals([])
-          setSelectedReserveCategories(null)
-          setSelectedIncomeCategories(null)
-        }
-      }
-
-      const [a, c, m] = await Promise.all([
+      const [a, c, m, settingsResult] = await Promise.all([
         supabase.from('accounts').select('*').eq('user_id', currentUserId).order('name'),
         supabase.from('categories').select('*').eq('user_id', currentUserId).order('type').order('name'),
-        supabase.from('transactions').select('*,accounts(name),categories(name)').eq('user_id', currentUserId).order('date', { ascending: false })
+        supabase.from('transactions').select('*,accounts(name),categories(name)').eq('user_id', currentUserId).order('date', { ascending: false }),
+        supabase.from('user_settings').select('opening_balance_month,opening_balance_amount').eq('user_id', currentUserId).maybeSingle()
       ])
-      if (a.error || c.error || m.error) throw new Error(a.error?.message || c.error?.message || m.error?.message)
+      if (a.error || c.error || m.error || settingsResult.error) {
+        throw new Error(a.error?.message || c.error?.message || m.error?.message || settingsResult.error?.message)
+      }
 
-      // Segunda barrera del lado de la interfaz: jamás renderizar filas de otro usuario,
-      // aun si una política de Supabase estuviera configurada incorrectamente.
       const ownAccounts = (a.data || []).filter(row => row.user_id === currentUserId)
       const ownCategories = (c.data || []).filter(row => row.user_id === currentUserId)
       const ownMovements = (m.data || []).filter(row => row.user_id === currentUserId)
+      const loadedSettings = settingsResult.data || { opening_balance_month: '', opening_balance_amount: 0 }
 
       setAccounts(ownAccounts)
       setCategories(ownCategories)
       setMovements(ownMovements)
+      setUserSettings(loadedSettings)
+      setSettingsDraft({
+        opening_balance_month: loadedSettings.opening_balance_month || '',
+        opening_balance_amount: loadedSettings.opening_balance_amount ?? ''
+      })
+      setTransferForm(current => ({
+        ...current,
+        from_account_id: current.from_account_id || ownAccounts[0]?.id || '',
+        to_account_id: current.to_account_id || ownAccounts[1]?.id || ''
+      }))
     } catch (e) {
       setAccounts([])
       setCategories([])
       setMovements([])
       setNotice(e.message || String(e))
     } finally {
-      setLoading(false)
+      setDataLoading(false)
+    }
+  }
+
+
+  const requestConfirm = ({ title, message, confirmLabel = 'Eliminar', tone = 'danger', onConfirm }) => {
+    setConfirmDialog({ title, message, confirmLabel, tone, onConfirm })
+  }
+
+  const runConfirmedAction = async () => {
+    const action = confirmDialog?.onConfirm
+    setConfirmDialog(null)
+    if (action) await action()
+  }
+
+  const saveFinancialSettings = async (e) => {
+    e.preventDefault()
+    if (!configured) {
+      const localSettings = {
+        opening_balance_month: settingsDraft.opening_balance_month || '',
+        opening_balance_amount: Number(settingsDraft.opening_balance_amount) || 0
+      }
+      setUserSettings(localSettings)
+      localStorage.setItem('finance_user_settings_demo', JSON.stringify(localSettings))
+      setNotice('Configuración financiera guardada localmente.')
+      return
+    }
+    if (!session?.user?.id) return
+    const payload = {
+      user_id: session.user.id,
+      opening_balance_month: settingsDraft.opening_balance_month || null,
+      opening_balance_amount: Number(settingsDraft.opening_balance_amount) || 0,
+      updated_at: new Date().toISOString()
+    }
+    const { data, error } = await supabase
+      .from('user_settings')
+      .upsert(payload, { onConflict: 'user_id' })
+      .select('opening_balance_month,opening_balance_amount')
+      .single()
+    if (error) return setNotice(error.message)
+    setUserSettings(data)
+    setNotice('Configuración financiera guardada.')
+  }
+
+  const saveAccountRecord = async (e) => {
+    e.preventDefault()
+    const name = accountForm.name.trim()
+    const initialBalance = Number(accountForm.initial_balance) || 0
+    if (!name) return setNotice('Ingrese un nombre para la cuenta.')
+
+    if (!configured) {
+      const next = accountForm.id
+        ? accounts.map(a => a.id === accountForm.id ? { ...a, name, initial_balance: initialBalance } : a)
+        : [...accounts, { id: crypto.randomUUID(), name, initial_balance: initialBalance }]
+      setAccounts(next)
+      setAccountForm({ id: null, name: '', initial_balance: '' })
+      return
+    }
+
+    const query = accountForm.id
+      ? supabase.from('accounts').update({ name, initial_balance: initialBalance }).eq('id', accountForm.id).eq('user_id', session.user.id)
+      : supabase.from('accounts').insert({ name, initial_balance: initialBalance, user_id: session.user.id })
+    const { error } = await query
+    if (error) return setNotice(error.message)
+    setAccountForm({ id: null, name: '', initial_balance: '' })
+    await loadAll()
+    setNotice(accountForm.id ? 'Cuenta actualizada.' : 'Cuenta creada.')
+  }
+
+  const removeAccount = (account) => {
+    const linked = movements.filter(m => m.account_id === account.id).length
+    requestConfirm({
+      title: 'Eliminar cuenta',
+      message: linked
+        ? `La cuenta “${account.name}” tiene ${linked} movimientos asociados y no puede eliminarse hasta reasignarlos.`
+        : `Se eliminará la cuenta “${account.name}”. Esta acción no se puede deshacer.`,
+      confirmLabel: linked ? 'Entendido' : 'Eliminar cuenta',
+      tone: linked ? 'info' : 'danger',
+      onConfirm: async () => {
+        if (linked) return
+        if (!configured) {
+          setAccounts(current => current.filter(a => a.id !== account.id))
+          return
+        }
+        const { error } = await supabase.from('accounts').delete().eq('id', account.id).eq('user_id', session.user.id)
+        if (error) setNotice(error.message)
+        else await loadAll()
+      }
+    })
+  }
+
+  const saveTransfer = async (e) => {
+    e.preventDefault()
+    const amount = Number(transferForm.amount)
+    if (!amount || amount <= 0) return setNotice('Ingrese un monto válido para la transferencia.')
+    if (!transferForm.from_account_id || !transferForm.to_account_id) return setNotice('Seleccione las dos cuentas.')
+    if (transferForm.from_account_id === transferForm.to_account_id) return setNotice('Las cuentas de origen y destino deben ser diferentes.')
+
+    const transferId = crypto.randomUUID()
+    const from = accounts.find(a => a.id === transferForm.from_account_id)
+    const to = accounts.find(a => a.id === transferForm.to_account_id)
+    const description = transferForm.description.trim() || `Transferencia de ${from?.name || 'cuenta'} a ${to?.name || 'cuenta'}`
+    const rows = [
+      { user_id: session?.user?.id, type: 'expense', date: transferForm.date, description, amount, account_id: transferForm.from_account_id, category_id: null, notes: `${TRANSFER_OUT} ${transferId}` },
+      { user_id: session?.user?.id, type: 'income', date: transferForm.date, description, amount, account_id: transferForm.to_account_id, category_id: null, notes: `${TRANSFER_IN} ${transferId}` }
+    ]
+
+    if (!configured) {
+      const localRows = rows.map((row, index) => ({ ...row, id: `${transferId}-${index}`, accounts: { name: index ? to?.name : from?.name }, categories: null }))
+      setMovements(current => [...localRows, ...current])
+    } else {
+      const { error } = await supabase.from('transactions').insert(rows)
+      if (error) return setNotice(error.message)
+      await loadAll()
+    }
+    setTransferForm({ from_account_id: accounts[0]?.id || '', to_account_id: accounts[1]?.id || '', amount: '', date: new Date().toISOString().slice(0, 10), description: '' })
+    setNotice('Transferencia registrada sin afectar ingresos ni egresos.')
+  }
+
+  const accountBalance = (accountId) => {
+    const account = accounts.find(a => a.id === accountId)
+    return (Number(account?.initial_balance) || 0) + movements
+      .filter(m => m.account_id === accountId)
+      .reduce((sum, m) => sum + (m.type === 'income' ? Number(m.amount) : -Number(m.amount)), 0)
+  }
+
+  const escapeCsv = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`
+
+  const exportCsv = () => {
+    const headers = ['fecha', 'tipo', 'concepto', 'monto', 'cuenta', 'categoria', 'observaciones']
+    const rows = movements.filter(m => !isTransferMovement(m)).map(m => [
+      m.date,
+      m.type === 'income' ? 'ingreso' : 'egreso',
+      m.description,
+      Number(m.amount),
+      m.accounts?.name || accounts.find(a => a.id === m.account_id)?.name || '',
+      m.categories?.name || '',
+      m.notes || ''
+    ])
+    const csv = [headers, ...rows].map(row => row.map(escapeCsv).join(',')).join('\n')
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `mis-finanzas-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const parseCsvLine = (line) => {
+    const out = []
+    let current = ''
+    let quoted = false
+    for (let i = 0; i < line.length; i += 1) {
+      const char = line[i]
+      if (char === '"' && quoted && line[i + 1] === '"') { current += '"'; i += 1 }
+      else if (char === '"') quoted = !quoted
+      else if (char === ',' && !quoted) { out.push(current); current = '' }
+      else current += char
+    }
+    out.push(current)
+    return out
+  }
+
+  const importCsv = async (event) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    try {
+      const text = (await file.text()).replace(/^\ufeff/, '')
+      const lines = text.split(/\r?\n/).filter(Boolean)
+      if (lines.length < 2) throw new Error('El archivo no contiene movimientos.')
+      const headers = parseCsvLine(lines[0]).map(x => x.trim().toLowerCase())
+      const required = ['fecha', 'tipo', 'concepto', 'monto']
+      if (required.some(key => !headers.includes(key))) throw new Error('El CSV debe contener fecha, tipo, concepto y monto.')
+      const index = Object.fromEntries(headers.map((h, i) => [h, i]))
+      const imported = []
+      for (const line of lines.slice(1)) {
+        const cells = parseCsvLine(line)
+        const typeText = String(cells[index.tipo] || '').trim().toLowerCase()
+        const type = typeText.startsWith('ing') ? 'income' : typeText.startsWith('egr') || typeText.startsWith('gas') ? 'expense' : null
+        const rawAmount = String(cells[index.monto] || '').trim().replace(/[^0-9,.-]/g, '')
+        const normalizedAmount = rawAmount.includes(',')
+          ? rawAmount.replace(/\./g, '').replace(',', '.')
+          : rawAmount
+        const amount = Number(normalizedAmount)
+        const date = String(cells[index.fecha] || '').trim()
+        if (!type || !amount || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue
+        const accountName = String(cells[index.cuenta] || '').trim().toLowerCase()
+        const categoryName = String(cells[index.categoria] || '').trim().toLowerCase()
+        const account = accounts.find(a => a.name.toLowerCase() === accountName) || accounts[0]
+        const category = categories.find(c => c.type === type && c.name.toLowerCase() === categoryName)
+        if (!account) continue
+        imported.push({
+          user_id: session?.user?.id,
+          date,
+          type,
+          description: String(cells[index.concepto] || '').trim() || 'Movimiento importado',
+          amount,
+          account_id: account.id,
+          category_id: category?.id || null,
+          notes: String(cells[index.observaciones] || '').trim() || null
+        })
+      }
+      if (!imported.length) throw new Error('No se encontraron filas válidas para importar.')
+      if (!configured) {
+        const localRows = imported.map(row => ({ ...row, id: crypto.randomUUID(), accounts: { name: accounts.find(a => a.id === row.account_id)?.name }, categories: { name: categories.find(c => c.id === row.category_id)?.name } }))
+        setMovements(current => [...localRows, ...current])
+      } else {
+        const { error } = await supabase.from('transactions').insert(imported)
+        if (error) throw error
+        await loadAll()
+      }
+      setNotice(`${imported.length} movimientos importados correctamente.`)
+    } catch (error) {
+      setNotice(error.message || 'No se pudo importar el archivo.')
     }
   }
 
@@ -563,10 +780,17 @@ export default function App() {
   }
 
   const removeSavingsGoal = (id) => {
-    if (!confirm('¿Eliminar esta meta de ahorro?')) return
-    const next = savingsGoals.filter(goal => goal.id !== id)
-    setSavingsGoals(next)
-    localStorage.setItem('finance_savings_goals', JSON.stringify(next))
+    const goal = savingsGoals.find(item => item.id === id)
+    requestConfirm({
+      title: 'Eliminar meta de ahorro',
+      message: `Se eliminará la meta “${goal?.name || 'seleccionada'}”. Esta acción no se puede deshacer.`,
+      confirmLabel: 'Eliminar meta',
+      onConfirm: () => {
+        const next = savingsGoals.filter(item => item.id !== id)
+        setSavingsGoals(next)
+        localStorage.setItem('finance_savings_goals', JSON.stringify(next))
+      }
+    })
   }
 
   const moveSavingsGoal = (id, direction) => {
@@ -587,14 +811,24 @@ export default function App() {
     localStorage.setItem('finance_savings_goals', JSON.stringify(normalized))
   }
 
-  const remove = async (id) => {
-    if (!confirm('¿Eliminar este movimiento?')) return
-    if (!configured) {
-      const next = movements.filter(x => x.id !== id)
-      setMovements(next); localStorage.setItem('finance_demo', JSON.stringify(next)); return
-    }
-    const { error } = await supabase.from('transactions').delete().eq('id', id).eq('user_id', session.user.id)
-    if (error) setNotice(error.message); else loadAll()
+  const remove = (id) => {
+    const movement = movements.find(item => item.id === id)
+    requestConfirm({
+      title: 'Eliminar movimiento',
+      message: `Se eliminará “${movement?.description || 'el movimiento seleccionado'}” por ${money(movement?.amount || 0)}.`,
+      confirmLabel: 'Eliminar movimiento',
+      onConfirm: async () => {
+        if (!configured) {
+          const next = movements.filter(x => x.id !== id)
+          setMovements(next)
+          localStorage.setItem('finance_demo', JSON.stringify(next))
+          return
+        }
+        const { error } = await supabase.from('transactions').delete().eq('id', id).eq('user_id', session.user.id)
+        if (error) setNotice(error.message)
+        else await loadAll()
+      }
+    })
   }
 
   const addCategory = async (item) => {
@@ -607,21 +841,33 @@ export default function App() {
     if (error) setNotice(error.message); else { setNotice('Categoría agregada.'); loadAll() }
   }
 
-  const removeCategory = async (cat) => {
-    if (!confirm(`¿Eliminar la categoría "${cat.name}"?`)) return
-    if (!configured) {
-      const next = categories.filter(c => c.id !== cat.id)
-      setCategories(next); localStorage.setItem('finance_categories', JSON.stringify(next)); return
-    }
-    const { error } = await supabase.from('categories').delete().eq('id', cat.id).eq('user_id', session.user.id)
-    if (error) setNotice(error.message); else loadAll()
+  const removeCategory = (cat) => {
+    const linked = movements.filter(m => m.category_id === cat.id).length
+    requestConfirm({
+      title: 'Eliminar categoría',
+      message: linked
+        ? `La categoría “${cat.name}” tiene ${linked} movimientos asociados. Al eliminarla, esos movimientos quedarán sin categoría.`
+        : `Se eliminará la categoría “${cat.name}”.`,
+      confirmLabel: 'Eliminar categoría',
+      onConfirm: async () => {
+        if (!configured) {
+          const next = categories.filter(c => c.id !== cat.id)
+          setCategories(next)
+          localStorage.setItem('finance_categories', JSON.stringify(next))
+          return
+        }
+        const { error } = await supabase.from('categories').delete().eq('id', cat.id).eq('user_id', session.user.id)
+        if (error) setNotice(error.message)
+        else await loadAll()
+      }
+    })
   }
 
-  const DATA_START = '2026-04'
-  // Saldo final real de abril según la planilla original.
-  // Desde mayo, este importe se arrastra como saldo del mes anterior.
-  const APRIL_CLOSING_BALANCE = session?.user?.email?.toLowerCase() === 'nahu.garcia.509@gmail.com' ? 266941.14 : 0
-  const monthRows = useMemo(() => movements.filter(m => m.date?.startsWith(month)), [movements, month])
+  const BASE_BALANCE_MONTH = userSettings.opening_balance_month || ''
+  const BASE_BALANCE_AMOUNT = Number(userSettings.opening_balance_amount) || 0
+  const DATA_START = BASE_BALANCE_MONTH || [...new Set(movements.map(x => x.date?.slice(0, 7)).filter(Boolean))].sort()[0] || month
+  const financialMovements = useMemo(() => movements.filter(m => !isTransferMovement(m)), [movements])
+  const monthRows = useMemo(() => financialMovements.filter(m => m.date?.startsWith(month)), [financialMovements, month])
   const visibleMonthRows = useMemo(() => monthRows, [monthRows])
   const searchedRows = useMemo(
     () => visibleMonthRows.filter(m => {
@@ -673,21 +919,17 @@ export default function App() {
     [expenseRowsWithoutSavings]
   )
   const openingBalance = useMemo(() => {
-    // Abril es el mes inicial y no arrastra saldo anterior.
-    if (!month || month <= DATA_START) return 0
-
-    // Mayo debe comenzar exactamente con el saldo final real de abril.
-    // Para junio en adelante se suma al saldo de abril el resultado neto
-    // de todos los movimientos cargados desde mayo hasta el mes anterior.
-    const carryFromMay = movements
+    if (!month) return 0
+    if (BASE_BALANCE_MONTH && month <= BASE_BALANCE_MONTH) return 0
+    const previousNet = financialMovements
       .filter(x => {
-        const k = x.date?.slice(0, 7)
-        return k && k >= '2026-05' && k < month
+        const key = x.date?.slice(0, 7)
+        if (!key || key >= month) return false
+        return BASE_BALANCE_MONTH ? key > BASE_BALANCE_MONTH : true
       })
       .reduce((sum, x) => sum + (x.type === 'income' ? Number(x.amount) : -Number(x.amount)), 0)
-
-    return APRIL_CLOSING_BALANCE + carryFromMay
-  }, [movements, month])
+    return BASE_BALANCE_AMOUNT + previousNet
+  }, [financialMovements, month, BASE_BALANCE_MONTH, BASE_BALANCE_AMOUNT])
   const monthlyNet = income - expense
   const closingBalance = openingBalance + monthlyNet
   const savingRate = (openingBalance + income) > 0 ? (closingBalance / (openingBalance + income)) * 100 : 0
@@ -752,30 +994,37 @@ export default function App() {
   }, [monthRows, openingBalance, dayTicks])
 
   const monthTotals = useMemo(() => {
-    const grouped = movements.reduce((o,x)=>{ const k=x.date?.slice(0,7); if(!k || k<DATA_START) return o; o[k]??={month:k,ingresos:0,egresos:0}; if(x.type==='income')o[k].ingresos+=Number(x.amount); else o[k].egresos+=Number(x.amount); return o },{})
+    const grouped = financialMovements.reduce((out, item) => {
+      const key = item.date?.slice(0, 7)
+      if (!key) return out
+      out[key] ??= { month: key, ingresos: 0, egresos: 0 }
+      if (item.type === 'income') out[key].ingresos += Number(item.amount)
+      else out[key].egresos += Number(item.amount)
+      return out
+    }, {})
 
-    return Object.values(grouped).sort((a,b)=>a.month.localeCompare(b.month)).map((x, index, all) => {
-      if (x.month === DATA_START) {
-        return { ...x, apertura: 0, neto: x.ingresos - x.egresos, saldoFinal: APRIL_CLOSING_BALANCE }
+    return Object.values(grouped).sort((a, b) => a.month.localeCompare(b.month)).map((item, index, all) => {
+      if (BASE_BALANCE_MONTH && item.month === BASE_BALANCE_MONTH) {
+        return { ...item, apertura: 0, neto: item.ingresos - item.egresos, saldoFinal: BASE_BALANCE_AMOUNT }
       }
-
-      const previous = all.slice(0, index).filter(item => item.month >= '2026-05')
-      const apertura = APRIL_CLOSING_BALANCE + previous.reduce((sum, item) => sum + item.ingresos - item.egresos, 0)
-      const neto = x.ingresos - x.egresos
-      return { ...x, apertura, neto, saldoFinal: apertura + neto }
+      const previous = all.slice(0, index).filter(row => !BASE_BALANCE_MONTH || row.month > BASE_BALANCE_MONTH)
+      const apertura = BASE_BALANCE_AMOUNT + previous.reduce((sum, row) => sum + row.ingresos - row.egresos, 0)
+      const neto = item.ingresos - item.egresos
+      return { ...item, apertura, neto, saldoFinal: apertura + neto }
     })
-  }, [movements])
+  }, [financialMovements, BASE_BALANCE_MONTH, BASE_BALANCE_AMOUNT])
+
 
   const analysisMonths = useMemo(() => {
-    const keys = [...new Set(movements.map(x => x.date?.slice(0, 7)).filter(k => k && k >= DATA_START))]
+    const keys = [...new Set(financialMovements.map(x => x.date?.slice(0, 7)).filter(k => k && k >= DATA_START))]
     return keys.sort()
-  }, [movements])
+  }, [financialMovements])
 
   const financeAnalysis = useMemo(() => {
     const monthCount = Math.max(analysisMonths.length, 1)
     const createStats = (type) => {
       const grouped = {}
-      movements.filter(x => {
+      financialMovements.filter(x => {
         if (x.date?.slice(0, 7) < DATA_START || x.type !== type) return false
 
         // Los aportes a ahorros no forman parte del gasto analizado,
@@ -818,7 +1067,7 @@ export default function App() {
     const expenses = createStats('expense')
     const incomes = createStats('income')
     const analysisMonthTotals = analysisMonths.map(monthKeyValue => {
-      const rows = movements.filter(x => x.date?.startsWith(monthKeyValue))
+      const rows = financialMovements.filter(x => x.date?.startsWith(monthKeyValue))
 
       const ingresos = rows
         .filter(x => x.type === 'income')
@@ -861,7 +1110,7 @@ export default function App() {
       expenseTrend,
       analysisMonthTotals
     }
-  }, [movements, analysisMonths, monthTotals])
+  }, [financialMovements, analysisMonths, monthTotals])
 
   useEffect(() => {
     if (!financeAnalysis.expenses.length) return
@@ -1039,21 +1288,21 @@ export default function App() {
 
   const bigExpenses = useMemo(() => {
     const query = bigExpenseSearch.trim().toLowerCase()
-    return movements
+    return financialMovements
       .filter(x => x.type === 'expense' && !isSavingsMovement(x))
       .filter(x => bigExpenseCategory === 'all' || (x.categories?.name || 'Sin categoría') === bigExpenseCategory)
       .filter(x => !query || `${x.description} ${x.categories?.name || ''} ${x.notes || ''}`.toLowerCase().includes(query))
       .sort((a, b) => Number(b.amount) - Number(a.amount))
-  }, [movements, bigExpenseSearch, bigExpenseCategory])
+  }, [financialMovements, bigExpenseSearch, bigExpenseCategory])
 
   const bigExpenseCategories = useMemo(
-    () => [...new Set(movements.filter(x => x.type === 'expense' && !isSavingsMovement(x)).map(x => x.categories?.name || 'Sin categoría'))].sort(),
-    [movements]
+    () => [...new Set(financialMovements.filter(x => x.type === 'expense' && !isSavingsMovement(x)).map(x => x.categories?.name || 'Sin categoría'))].sort(),
+    [financialMovements]
   )
 
 
-  const allCategoryNames = useMemo(() => [...new Set(movements.map(x => x.categories?.name || (savingsKind(x) ? 'Ahorros' : 'Sin categoría')))].sort(), [movements])
-  const previousMonthRows = useMemo(() => movements.filter(x => x.date?.startsWith(comparisonMonth)), [movements, comparisonMonth])
+  const allCategoryNames = useMemo(() => [...new Set(financialMovements.map(x => x.categories?.name || (savingsKind(x) ? 'Ahorros' : 'Sin categoría')))].sort(), [financialMovements])
+  const previousMonthRows = useMemo(() => financialMovements.filter(x => x.date?.startsWith(comparisonMonth)), [financialMovements, comparisonMonth])
   const previousIncome = previousMonthRows.filter(x => x.type === 'income').reduce((s,x)=>s+Number(x.amount),0)
   const previousExpense = previousMonthRows.filter(x => x.type === 'expense' && savingsKind(x) !== 'deposit').reduce((s,x)=>s+Number(x.amount),0)
   const forecastExpense = daysWithExpense ? (expenseWithoutSavings / Math.max(new Date().getDate(),1)) * daysInSelectedMonth : expenseWithoutSavings
@@ -1157,6 +1406,23 @@ export default function App() {
       .chart-help:hover .chart-help-tooltip { opacity:1; visibility:visible; }
       .home-grid .panel, .home-grid .panel-title, .chart-title-row { overflow:visible !important; }
       .chart-help-tooltip::before { content:''; position:absolute; top:-6px; left:50%; width:10px; height:10px; background:#071524; border-left:1px solid #3a5878; border-top:1px solid #3a5878; transform:translateX(-50%) rotate(45deg); }
+
+      /* Tooltips de Recharts: mismo fondo de la app y contraste alto en toda la aplicación */
+      .recharts-tooltip-wrapper { z-index:99999 !important; outline:none !important; }
+      .recharts-default-tooltip {
+        background:#071524 !important;
+        border:1px solid #365b7d !important;
+        border-radius:10px !important;
+        box-shadow:0 12px 30px rgba(0,0,0,.42) !important;
+        color:#f8fbff !important;
+        padding:10px 12px !important;
+      }
+      .recharts-tooltip-label { color:#f8fbff !important; font-weight:800 !important; margin-bottom:6px !important; }
+      .recharts-tooltip-item,
+      .recharts-tooltip-item-name,
+      .recharts-tooltip-item-value,
+      .recharts-tooltip-item-separator { color:#f8fbff !important; font-weight:650 !important; }
+      .recharts-tooltip-cursor { fill:rgba(56,189,248,.08) !important; stroke:rgba(143,176,211,.55) !important; }
       @media (max-width:850px) { .side-nav { position:fixed; left:0; top:76px; bottom:0; z-index:9990; box-shadow:12px 0 30px rgba(0,0,0,.35); } .side-nav.collapsed { width:68px; flex-basis:68px; } .app-shell { padding-left:68px; } }
 
       /* Encabezado alineado a los extremos y controles con estilo de la app */
@@ -1458,6 +1724,107 @@ export default function App() {
       .table-panel td,.table-panel th{padding:14px 16px!important;vertical-align:middle!important}
       .table-panel .search.compact{min-width:280px!important}
       @media(max-width:900px){.goals-form{grid-template-columns:1fr!important}.table-panel .search.compact{min-width:0!important;width:100%!important}.app-content{padding:14px!important}}
+
+      /* CORRECCIÓN DEFINITIVA: ninguna vista puede centrarse verticalmente */
+      .app .app-shell {
+        display:flex !important;
+        align-items:stretch !important;
+        justify-content:flex-start !important;
+        min-height:calc(100vh - 72px) !important;
+        height:auto !important;
+      }
+      .app .app-shell > main.app-content {
+        display:flex !important;
+        flex:1 1 auto !important;
+        flex-direction:column !important;
+        align-items:stretch !important;
+        justify-content:flex-start !important;
+        align-content:stretch !important;
+        align-self:stretch !important;
+        min-width:0 !important;
+        width:auto !important;
+        max-width:none !important;
+        min-height:calc(100vh - 72px) !important;
+        height:auto !important;
+        margin:0 !important;
+        padding:18px 22px 34px !important;
+        overflow:visible !important;
+      }
+      .app .app-shell > main.app-content > * {
+        flex:0 0 auto !important;
+        align-self:stretch !important;
+        justify-self:stretch !important;
+        max-width:none !important;
+      }
+      .app .app-shell > main.app-content > .toolbar {
+        order:-100 !important;
+        display:flex !important;
+        align-items:center !important;
+        justify-content:space-between !important;
+        width:100% !important;
+        min-height:44px !important;
+        margin:0 0 12px !important;
+        padding:0 !important;
+      }
+      .app .app-shell > main.app-content > section,
+      .app .app-shell > main.app-content > .panel,
+      .app .app-shell > main.app-content > .table-panel,
+      .app .app-shell > main.app-content > .standalone-view,
+      .app .app-shell > main.app-content > .entry-grid,
+      .app .app-shell > main.app-content > .charts,
+      .app .app-shell > main.app-content > .dashboard-grid,
+      .app .app-shell > main.app-content > .home-grid {
+        position:relative !important;
+        top:auto !important;
+        bottom:auto !important;
+        transform:none !important;
+        margin-left:0 !important;
+        margin-right:0 !important;
+      }
+      .app .app-shell > main.app-content > .standalone-view {
+        margin-top:0 !important;
+        min-height:0 !important;
+      }
+      .app .app-shell > main.app-content > .table-panel {
+        margin-top:0 !important;
+      }
+      @media(max-width:900px){
+        .app .app-shell > main.app-content{padding:14px !important;}
+      }
+    `}</style>
+    <style>{`
+      .control-sections-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; margin:20px 0; }
+      .control-subpanel { border:1px solid #29405c; border-radius:14px; background:#0b1b2f; padding:18px; margin:16px 0; }
+      .control-sections-grid .control-subpanel { margin:0; }
+      .control-subpanel-title { display:flex; align-items:flex-start; gap:12px; margin-bottom:14px; }
+      .control-subpanel-title > svg { width:24px; height:24px; color:var(--accent,#38bdf8); flex:0 0 24px; }
+      .control-subpanel-title h3 { margin:0 0 3px; }
+      .control-subpanel-title span, .control-note { color:#8aa7c7; font-size:12px; line-height:1.5; }
+      .control-form-grid { display:grid; gap:12px; margin-bottom:12px; }
+      .control-form-grid.two-cols { grid-template-columns:repeat(2,minmax(0,1fr)); }
+      .control-form-grid label, .account-management-form label, .transfer-grid label { display:flex; flex-direction:column; gap:7px; color:#9fb3c8; font-size:12px; }
+      .data-actions { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:10px; }
+      .account-management-form { display:grid; grid-template-columns:minmax(220px,1fr) minmax(180px,.6fr) auto auto; gap:10px; align-items:end; margin-bottom:14px; }
+      .account-cards-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:10px; }
+      .account-card { border:1px solid #29405c; border-radius:12px; padding:14px; background:#0d1c30; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; align-items:center; }
+      .account-card div:first-child { display:flex; flex-direction:column; gap:3px; }
+      .account-card small { color:#8aa7c7; }
+      .account-card strong { color:#4ade80; font-size:18px; }
+      .account-card .row-actions { grid-column:1 / -1; justify-content:flex-end; }
+      .transfer-grid { display:grid; grid-template-columns:repeat(4,minmax(150px,1fr)); gap:10px; align-items:end; }
+      .transfer-description { grid-column:span 2; }
+      .data-loading-strip { display:flex; align-items:center; gap:10px; margin:12px 0 16px; padding:10px 14px; border:1px solid #29405c; border-radius:11px; background:#0c1b2f; color:#9fb3c8; }
+      .skeleton-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin:14px 0; }
+      .skeleton-card { height:110px; border-radius:14px; background:linear-gradient(90deg,#0d1c30 25%,#152a43 50%,#0d1c30 75%); background-size:200% 100%; animation:skeletonPulse 1.25s infinite; }
+      @keyframes skeletonPulse { from { background-position:200% 0; } to { background-position:-200% 0; } }
+      .confirm-backdrop { position:fixed; inset:0; z-index:1000000; background:rgba(1,8,18,.72); backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; padding:20px; }
+      .confirm-dialog { width:min(480px,100%); border:1px solid #365675; border-radius:16px; background:#0b1b2f; box-shadow:0 24px 70px rgba(0,0,0,.55); padding:20px; }
+      .confirm-dialog h3 { margin:0 0 8px; }
+      .confirm-dialog p { margin:0; color:#9fb3c8; line-height:1.55; }
+      .confirm-dialog-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:20px; }
+      .confirm-dialog .info-action { background:#38bdf8 !important; color:#071524 !important; }
+      @media (max-width:900px) { .control-sections-grid { grid-template-columns:1fr; } .transfer-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .account-management-form { grid-template-columns:1fr 1fr; } .skeleton-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+      @media (max-width:600px) { .control-form-grid.two-cols, .transfer-grid, .account-management-form { grid-template-columns:1fr; } .transfer-description { grid-column:1; } .skeleton-grid { grid-template-columns:1fr; } }
     `}</style>
     <header><div className="brand"><div className="brand-icon"><WalletCards /></div><div><b>Mis Finanzas</b><small>Información sincronizada y siempre disponible</small></div></div><div className="header-actions"><button className={`ghost header-icon ${filtersOpen || Object.values(filters).some(v => v && v !== 'all') ? 'active' : ''}`} onClick={() => { setFilterDraft(filters); setFiltersOpen(true) }} title="Filtros"><SlidersHorizontal />{Object.values(filters).some(v => v && v !== 'all') && <span className="filter-dot" />}</button><button className={`ghost header-icon ${notificationsOpen ? 'active' : ''}`} onClick={() => setNotificationsOpen(true)} title="Notificaciones"><Bell />{notifications.length > 0 && <span className="notification-badge">{notifications.length}</span>}</button><button className="secondary" onClick={() => openNew('income')}><ArrowUpCircle /> Ingreso</button><button onClick={() => openNew('expense')}><ArrowDownCircle /> Egreso</button>{configured && <button className="ghost" onClick={() => supabase.auth.signOut()} title="Cerrar sesión" aria-label="Cerrar sesión"><LogOut /></button>}</div></header>
     {filtersOpen && <div className="overlay-panel" onMouseDown={() => setFiltersOpen(false)}>
@@ -1504,6 +1871,7 @@ export default function App() {
         </nav>
       </aside>
       <main className="app-content">
+      {dataLoading && <><div className="data-loading-strip"><RefreshCw className="spin" /> Actualizando datos de esta cuenta…</div><div className="skeleton-grid">{[1,2,3,4].map(item => <div className="skeleton-card" key={item} />)}</div></>}
       {notice && <div className="notice" onClick={() => setNotice('')}>{notice}</div>}
       <div className="toolbar">
         {tab === 'analysis'
@@ -1545,7 +1913,7 @@ export default function App() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#203047" />
                   <XAxis dataKey="month" stroke="#7890a8" />
                   <YAxis stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`} />
-                  <Tooltip formatter={v=>money(v)} contentStyle={{background:'#071524',border:'1px solid #36516f',borderRadius:10}} />
+                  <Tooltip formatter={v=>money(v)} contentStyle={{background:'#071524',border:'1px solid #365b7d',borderRadius:10,color:'#f8fbff',boxShadow:'0 12px 30px rgba(0,0,0,.42)'}} labelStyle={{color:'#f8fbff',fontWeight:800}} itemStyle={{color:'#f8fbff'}} />
                   <Legend />
                   <Bar dataKey="ingresos" name="Ingresos" fill="#4ade80" radius={[6,6,0,0]} />
                   <Bar dataKey="egresos" name="Egresos sin ahorros" fill="#fb7185" radius={[6,6,0,0]} />
@@ -1569,7 +1937,7 @@ export default function App() {
                     <Pie data={byCategory.slice(0,6)} dataKey="value" nameKey="name" innerRadius="55%" outerRadius="82%" paddingAngle={2}>
                       {byCategory.slice(0,6).map((_,i)=><Cell key={i} fill={palette[i%palette.length]} />)}
                     </Pie>
-                    <Tooltip formatter={v=>money(v)} contentStyle={{background:'#071524',border:'1px solid #36516f',borderRadius:10}} />
+                    <Tooltip formatter={v=>money(v)} contentStyle={{background:'#071524',border:'1px solid #365b7d',borderRadius:10,color:'#f8fbff',boxShadow:'0 12px 30px rgba(0,0,0,.42)'}} labelStyle={{color:'#f8fbff',fontWeight:800}} itemStyle={{color:'#f8fbff'}} />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
@@ -1619,7 +1987,7 @@ export default function App() {
                     <CartesianGrid strokeDasharray="3 3" stroke="#203047" />
                     <XAxis dataKey="day" stroke="#7890a8" tick={{fontSize:10}} />
                     <YAxis stroke="#7890a8" tick={{fontSize:10}} tickFormatter={v=>`$${Math.round(v/1000)}k`} />
-                    <Tooltip formatter={v=>money(v)} contentStyle={{background:'#071524',border:'1px solid #36516f',borderRadius:10}} />
+                    <Tooltip formatter={v=>money(v)} contentStyle={{background:'#071524',border:'1px solid #365b7d',borderRadius:10,color:'#f8fbff',boxShadow:'0 12px 30px rgba(0,0,0,.42)'}} labelStyle={{color:'#f8fbff',fontWeight:800}} itemStyle={{color:'#f8fbff'}} />
                     <Line type="monotone" dataKey="acumulado" name="Saldo" stroke="#4ade80" strokeWidth={3} dot={false} />
                   </LineChart>
                 </ResponsiveContainer>
@@ -1650,7 +2018,7 @@ export default function App() {
           <article className="top-insight-card warn"><CardHelp text="Promedio de egresos calculado únicamente sobre los días que tuvieron gastos."/><span>Promedio diario de gasto</span><strong>{money(avgDailyExpense)}</strong><small>Sobre días con egresos</small><CircleDollarSign/></article>
         </div>
         <div className="visual-two-column">
-          <article className="visual-card"><div className="panel-title"><div><ChartInfoTitle title="Actividad diaria" text="Compara los ingresos y egresos registrados cada día del mes para detectar jornadas de mayor movimiento."/><span>Ingresos y egresos por día</span></div></div><div className="visual-chart"><ResponsiveContainer><BarChart data={Array.from({length:calendarDays.days},(_,i)=>{const d=i+1;const t=calendarDays.map[d]||{};return{dia:d,ingresos:t.income||0,egresos:t.expense||0}})}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis dataKey="dia" stroke="#7890a8"/><YAxis stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><Tooltip formatter={v=>money(v)} contentStyle={{background:'#071524',border:'1px solid #36516f',borderRadius:10}}/><Legend/><Bar dataKey="ingresos" name="Ingresos" fill="#4ade80" radius={[4,4,0,0]}/><Bar dataKey="egresos" name="Egresos" fill="#fb7185" radius={[4,4,0,0]}/></BarChart></ResponsiveContainer></div></article>
+          <article className="visual-card"><div className="panel-title"><div><ChartInfoTitle title="Actividad diaria" text="Compara los ingresos y egresos registrados cada día del mes para detectar jornadas de mayor movimiento."/><span>Ingresos y egresos por día</span></div></div><div className="visual-chart"><ResponsiveContainer><BarChart data={Array.from({length:calendarDays.days},(_,i)=>{const d=i+1;const t=calendarDays.map[d]||{};return{dia:d,ingresos:t.income||0,egresos:t.expense||0}})}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis dataKey="dia" stroke="#7890a8"/><YAxis stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><Tooltip formatter={v=>money(v)} contentStyle={{background:'#071524',border:'1px solid #365b7d',borderRadius:10,color:'#f8fbff',boxShadow:'0 12px 30px rgba(0,0,0,.42)'}} labelStyle={{color:'#f8fbff',fontWeight:800}} itemStyle={{color:'#f8fbff'}}/><Legend/><Bar dataKey="ingresos" name="Ingresos" fill="#4ade80" radius={[4,4,0,0]}/><Bar dataKey="egresos" name="Egresos" fill="#fb7185" radius={[4,4,0,0]}/></BarChart></ResponsiveContainer></div></article>
           <article className="visual-card"><div className="panel-title"><div><ChartInfoTitle title="Resumen del mes" text="Destaca los datos más útiles del calendario para interpretar rápidamente la actividad financiera."/></div></div><div className="insight-list"><div className="insight-row"><span>Día con mayor gasto</span><strong>{biggestExpense?.date ? biggestExpense.date.split('-').reverse().join('/') : '—'}</strong></div><div className="insight-row"><span>Mayor gasto individual</span><strong className="negative">{money(biggestExpense?.amount||0)}</strong></div><div className="insight-row"><span>Resultado del mes</span><strong className={(income-expenseWithoutSavings)>=0?'positive':'negative'}>{money(income-expenseWithoutSavings)}</strong></div><div className="insight-row"><span>Días sin movimientos</span><strong>{Math.max(calendarDays.days-new Set(monthRows.map(x=>x.date)).size,0)}</strong></div></div></article>
         </div>
         <div className="calendar-grid">{['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'].map(day=><div className="calendar-head" key={day}>{day}</div>)}{Array.from({length:calendarDays.first}).map((_,i)=><div className="calendar-day empty" key={`empty-${i}`}></div>)}{Array.from({length:calendarDays.days},(_,i)=>i+1).map(day=>{ const totals=calendarDays.map[day]||{}; return <article className="calendar-day" key={day}><b>{day}</b>{totals.income>0&&<span className="calendar-value income">+ {money(totals.income)}</span>}{totals.expense>0&&<span className="calendar-value expense">- {money(totals.expense)}</span>}{totals.savings>0&&<span className="calendar-value savings">Ahorro {money(totals.savings)}</span>}</article>})}</div>
@@ -1666,8 +2034,8 @@ export default function App() {
         </div>
         <div className="comparison-grid"><article className="comparison-card"><span>Ingresos</span><strong className="positive">{money(income)}</strong><small>Anterior: {money(previousIncome)}</small></article><article className="comparison-card"><span>Egresos</span><strong className="negative">{money(expenseWithoutSavings)}</strong><small>Anterior: {money(previousExpense)}</small></article><article className="comparison-card"><span>Resultado neto</span><strong className={(income-expenseWithoutSavings)>=0?'positive':'negative'}>{money(income-expenseWithoutSavings)}</strong><small>Anterior: {money(previousIncome-previousExpense)}</small></article></div>
         <div className="visual-two-column">
-          <article className="visual-card"><div className="panel-title"><div><ChartInfoTitle title="Comparación general" text="Presenta lado a lado los ingresos y egresos de ambos períodos para identificar cambios de escala."/></div></div><div className="visual-chart"><ResponsiveContainer><BarChart data={[{periodo:comparisonMonth,ingresos:previousIncome,egresos:previousExpense},{periodo:month,ingresos:income,egresos:expenseWithoutSavings}]}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis dataKey="periodo" stroke="#7890a8"/><YAxis stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><Tooltip formatter={v=>money(v)} contentStyle={{background:'#071524',border:'1px solid #36516f',borderRadius:10}}/><Legend/><Bar dataKey="ingresos" name="Ingresos" fill="#4ade80" radius={[5,5,0,0]}/><Bar dataKey="egresos" name="Egresos" fill="#fb7185" radius={[5,5,0,0]}/></BarChart></ResponsiveContainer></div></article>
-          <article className="visual-card"><div className="panel-title"><div><ChartInfoTitle title="Resultado neto" text="Compara cuánto quedó disponible después de restar los egresos a los ingresos en cada período."/></div></div><div className="visual-chart"><ResponsiveContainer><BarChart data={[{periodo:comparisonMonth,resultado:previousIncome-previousExpense},{periodo:month,resultado:income-expenseWithoutSavings}]}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis dataKey="periodo" stroke="#7890a8"/><YAxis stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><Tooltip formatter={v=>money(v)} contentStyle={{background:'#071524',border:'1px solid #36516f',borderRadius:10}}/><Bar dataKey="resultado" name="Resultado neto" fill="#38bdf8" radius={[5,5,0,0]}/></BarChart></ResponsiveContainer></div></article>
+          <article className="visual-card"><div className="panel-title"><div><ChartInfoTitle title="Comparación general" text="Presenta lado a lado los ingresos y egresos de ambos períodos para identificar cambios de escala."/></div></div><div className="visual-chart"><ResponsiveContainer><BarChart data={[{periodo:comparisonMonth,ingresos:previousIncome,egresos:previousExpense},{periodo:month,ingresos:income,egresos:expenseWithoutSavings}]}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis dataKey="periodo" stroke="#7890a8"/><YAxis stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><Tooltip formatter={v=>money(v)} contentStyle={{background:'#071524',border:'1px solid #365b7d',borderRadius:10,color:'#f8fbff',boxShadow:'0 12px 30px rgba(0,0,0,.42)'}} labelStyle={{color:'#f8fbff',fontWeight:800}} itemStyle={{color:'#f8fbff'}}/><Legend/><Bar dataKey="ingresos" name="Ingresos" fill="#4ade80" radius={[5,5,0,0]}/><Bar dataKey="egresos" name="Egresos" fill="#fb7185" radius={[5,5,0,0]}/></BarChart></ResponsiveContainer></div></article>
+          <article className="visual-card"><div className="panel-title"><div><ChartInfoTitle title="Resultado neto" text="Compara cuánto quedó disponible después de restar los egresos a los ingresos en cada período."/></div></div><div className="visual-chart"><ResponsiveContainer><BarChart data={[{periodo:comparisonMonth,resultado:previousIncome-previousExpense},{periodo:month,resultado:income-expenseWithoutSavings}]}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis dataKey="periodo" stroke="#7890a8"/><YAxis stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><Tooltip formatter={v=>money(v)} contentStyle={{background:'#071524',border:'1px solid #365b7d',borderRadius:10,color:'#f8fbff',boxShadow:'0 12px 30px rgba(0,0,0,.42)'}} labelStyle={{color:'#f8fbff',fontWeight:800}} itemStyle={{color:'#f8fbff'}}/><Bar dataKey="resultado" name="Resultado neto" fill="#38bdf8" radius={[5,5,0,0]}/></BarChart></ResponsiveContainer></div></article>
         </div>
       </section>}
 
@@ -1680,7 +2048,7 @@ export default function App() {
           <article className="top-insight-card negative"><CardHelp text="Dinero que todavía falta acumular para completar todas las metas."/><span>Monto pendiente</span><strong>{money(allocatedSavingsGoals.reduce((sum,x)=>sum+Number(x.remaining||0),0))}</strong><small>Falta para completar todo</small><TrendingUp/></article>
         </div>
         <div className="goal-overview-grid">
-          <article className="visual-card"><div className="panel-title"><div><ChartInfoTitle title="Avance por objetivo" text="Compara el dinero ya asignado y el monto que todavía falta para completar cada meta."/></div></div><div className="visual-chart"><ResponsiveContainer><BarChart data={allocatedSavingsGoals.slice(0,8).map(g=>({meta:g.name,asignado:g.allocated,pendiente:g.remaining}))} layout="vertical" margin={{left:18,right:18}}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis type="number" stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><YAxis type="category" dataKey="meta" width={120} stroke="#7890a8" tick={{fontSize:11}}/><Tooltip formatter={v=>money(v)} contentStyle={{background:'#071524',border:'1px solid #36516f',borderRadius:10}}/><Legend/><Bar dataKey="asignado" name="Asignado" stackId="a" fill="#4ade80"/><Bar dataKey="pendiente" name="Pendiente" stackId="a" fill="#334b68" radius={[0,5,5,0]}/></BarChart></ResponsiveContainer></div></article>
+          <article className="visual-card"><div className="panel-title"><div><ChartInfoTitle title="Avance por objetivo" text="Compara el dinero ya asignado y el monto que todavía falta para completar cada meta."/></div></div><div className="visual-chart"><ResponsiveContainer><BarChart data={allocatedSavingsGoals.slice(0,8).map(g=>({meta:g.name,asignado:g.allocated,pendiente:g.remaining}))} layout="vertical" margin={{left:18,right:18}}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis type="number" stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><YAxis type="category" dataKey="meta" width={120} stroke="#7890a8" tick={{fontSize:11}}/><Tooltip formatter={v=>money(v)} contentStyle={{background:'#071524',border:'1px solid #365b7d',borderRadius:10,color:'#f8fbff',boxShadow:'0 12px 30px rgba(0,0,0,.42)'}} labelStyle={{color:'#f8fbff',fontWeight:800}} itemStyle={{color:'#f8fbff'}}/><Legend/><Bar dataKey="asignado" name="Asignado" stackId="a" fill="#4ade80"/><Bar dataKey="pendiente" name="Pendiente" stackId="a" fill="#334b68" radius={[0,5,5,0]}/></BarChart></ResponsiveContainer></div></article>
           <article className="visual-card"><div className="panel-title"><div><ChartInfoTitle title="Plan sugerido" text="Resume el esfuerzo mensual necesario para avanzar en las metas según la capacidad de ahorro promedio."/></div></div><div className="insight-list"><div className="insight-row"><span>Capacidad mensual estimada</span><strong className={financeAnalysis.averageNet>=0?'positive':'negative'}>{money(Math.max(financeAnalysis.averageNet,0))}</strong></div><div className="insight-row"><span>Meses para completar todo</span><strong>{financeAnalysis.averageNet>0 ? Math.ceil(allocatedSavingsGoals.reduce((s,g)=>s+g.remaining,0)/financeAnalysis.averageNet) : '—'}</strong></div><div className="insight-row"><span>Meta prioritaria</span><strong>{allocatedSavingsGoals[0]?.name||'Sin meta'}</strong></div><div className="insight-row"><span>Progreso global</span><strong>{allocatedSavingsGoals.reduce((s,g)=>s+Number(g.target||0),0)>0 ? `${((allocatedSavingsGoals.reduce((s,g)=>s+g.allocated,0)/allocatedSavingsGoals.reduce((s,g)=>s+Number(g.target||0),0))*100).toFixed(1)}%` : '0%'}</strong></div></div></article>
         </div>
         <form className="category-form goals-form" onSubmit={saveSavingsGoal}><label className="grow">Nombre de la meta<input value={goalForm.name} onChange={e=>setGoalForm({...goalForm,name:e.target.value})} placeholder="Ej. Fondo de emergencia" required /></label><label>Monto objetivo<input type="number" min="0" step="0.01" value={goalForm.target} onChange={e=>setGoalForm({...goalForm,target:e.target.value})} placeholder="0,00" required /></label><label>Prioridad<input type="number" min="1" step="1" value={goalForm.priority} onChange={e=>setGoalForm({...goalForm,priority:e.target.value})} /></label><button type="submit"><Plus/> Agregar meta</button></form>
@@ -1928,8 +2296,8 @@ export default function App() {
       {tab === 'savings' && <>
         <section className="kpis extended compact-kpis">
           <article><CardHelp text="Dinero actualmente acumulado en ahorros. Se calcula sumando todos los aportes y restando todos los retiros." /><span>Saldo en ahorros</span><strong className="positive">{money(savingsBalance)}</strong><PiggyBank /><small>Disponible en el fondo</small></article>
-          <article><CardHelp text="Suma histórica de todos los aportes realizados al fondo de ahorro." /><span>Total guardado</span><strong>{money(savingsDeposits)}</strong><Download /><small>{savingsMovements.filter(x => savingsKind(x) === 'deposit').length} aportes</small></article>
-          <article><CardHelp text="Suma histórica de todos los retiros realizados desde el fondo de ahorro." /><span>Total retirado</span><strong className="negative">{money(savingsWithdrawals)}</strong><Upload /><small>{savingsMovements.filter(x => savingsKind(x) === 'withdrawal').length} retiros</small></article>
+          <article><CardHelp text="Suma histórica de todos los aportes realizados al fondo de ahorro." /><span>Total guardado</span><strong>{money(savingsDeposits)}</strong><TrendingUp /><small>{savingsMovements.filter(x => savingsKind(x) === 'deposit').length} aportes</small></article>
+          <article><CardHelp text="Suma histórica de todos los retiros realizados desde el fondo de ahorro." /><span>Total retirado</span><strong className="negative">{money(savingsWithdrawals)}</strong><TrendingDown /><small>{savingsMovements.filter(x => savingsKind(x) === 'withdrawal').length} retiros</small></article>
         </section>
 
         <section className="entry-grid savings-entry-section">
@@ -2159,7 +2527,66 @@ export default function App() {
       {tab === 'control' && <section className="panel control-card">
         <div className="section-icon"><FolderCog /></div>
         <h2>Control y personalización</h2>
-        <p>Administrar categorías, apariencia general y atajos de teclado de la aplicación.</p>
+        <p>Administrar configuración financiera, cuentas, transferencias, datos, categorías y apariencia.</p>
+
+        <div className="control-sections-grid">
+          <form className="control-subpanel" onSubmit={saveFinancialSettings}>
+            <div className="control-subpanel-title"><WalletCards /><div><h3>Saldo inicial</h3><span>Configuración privada guardada por usuario en Supabase</span></div></div>
+            <div className="control-form-grid two-cols">
+              <label>Mes base
+                <input type="month" value={settingsDraft.opening_balance_month} onChange={e => setSettingsDraft(current => ({ ...current, opening_balance_month: e.target.value }))} />
+              </label>
+              <label>Saldo al cierre de ese mes
+                <input type="number" step="0.01" value={settingsDraft.opening_balance_amount} onChange={e => setSettingsDraft(current => ({ ...current, opening_balance_amount: e.target.value }))} placeholder="0,00" />
+              </label>
+            </div>
+            <small className="control-note">Este valor reemplaza cualquier saldo hardcodeado y se utiliza como punto de partida para los meses posteriores.</small>
+            <button type="submit"><Settings2 /> Guardar saldo inicial</button>
+          </form>
+
+          <div className="control-subpanel">
+            <div className="control-subpanel-title"><Download /><div><h3>Importar y exportar</h3><span>Copia de seguridad y carga masiva de movimientos</span></div></div>
+            <div className="data-actions">
+              <button type="button" className="secondary" onClick={exportCsv}><Download /> Exportar CSV</button>
+              <button type="button" onClick={() => importFileRef.current?.click()}><Upload /> Importar CSV</button>
+              <input ref={importFileRef} type="file" accept=".csv,text/csv" onChange={importCsv} hidden />
+            </div>
+            <small className="control-note">El importador admite el mismo formato que genera la exportación: fecha, tipo, concepto, monto, cuenta, categoría y observaciones.</small>
+          </div>
+        </div>
+
+        <div className="control-subpanel account-management">
+          <div className="control-subpanel-title"><WalletCards /><div><h3>Cuentas</h3><span>Crear, editar y eliminar cuentas sin usar monedas que no participan de los cálculos</span></div></div>
+          <form className="account-management-form" onSubmit={saveAccountRecord}>
+            <label>Nombre de la cuenta<input value={accountForm.name} onChange={e => setAccountForm(current => ({ ...current, name: e.target.value }))} placeholder="Ej. Banco o efectivo" /></label>
+            <label>Saldo inicial<input type="number" step="0.01" value={accountForm.initial_balance} onChange={e => setAccountForm(current => ({ ...current, initial_balance: e.target.value }))} placeholder="0,00" /></label>
+            <button type="submit">{accountForm.id ? <><Pencil /> Guardar edición</> : <><Plus /> Crear cuenta</>}</button>
+            {accountForm.id && <button type="button" className="ghost" onClick={() => setAccountForm({ id: null, name: '', initial_balance: '' })}>Cancelar</button>}
+          </form>
+          <div className="account-cards-grid">
+            {accounts.map(account => <article className="account-card" key={account.id}>
+              <div><b>{account.name}</b><small>Saldo calculado</small></div>
+              <strong>{money(accountBalance(account.id))}</strong>
+              <div className="row-actions">
+                <button type="button" className="ghost" onClick={() => setAccountForm({ id: account.id, name: account.name, initial_balance: account.initial_balance ?? '' })}><Pencil /></button>
+                <button type="button" className="ghost danger" onClick={() => removeAccount(account)}><Trash2 /></button>
+              </div>
+            </article>)}
+            {!accounts.length && <div className="empty-card">Todavía no existen cuentas.</div>}
+          </div>
+        </div>
+
+        <form className="control-subpanel" onSubmit={saveTransfer}>
+          <div className="control-subpanel-title"><RefreshCw /><div><h3>Transferencia entre cuentas</h3><span>Mueve dinero sin modificar ingresos, egresos ni resultados mensuales</span></div></div>
+          <div className="transfer-grid">
+            <label>Desde<select value={transferForm.from_account_id} onChange={e => setTransferForm(current => ({ ...current, from_account_id: e.target.value }))}>{accounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
+            <label>Hacia<select value={transferForm.to_account_id} onChange={e => setTransferForm(current => ({ ...current, to_account_id: e.target.value }))}>{accounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
+            <label>Monto<input type="number" min="0" step="0.01" value={transferForm.amount} onChange={e => setTransferForm(current => ({ ...current, amount: e.target.value }))} placeholder="0,00" /></label>
+            <label>Fecha<input type="date" value={transferForm.date} onChange={e => setTransferForm(current => ({ ...current, date: e.target.value }))} /></label>
+            <label className="transfer-description">Descripción<input value={transferForm.description} onChange={e => setTransferForm(current => ({ ...current, description: e.target.value }))} placeholder="Opcional" /></label>
+            <button type="submit" disabled={accounts.length < 2}><RefreshCw /> Transferir</button>
+          </div>
+        </form>
 
         <div className="theme-section">
           <div className="theme-block">
@@ -2185,6 +2612,16 @@ export default function App() {
       </section>}
       </main>
     </div>
+    {confirmDialog && <div className="confirm-backdrop" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title" onMouseDown={e => { if (e.target === e.currentTarget) setConfirmDialog(null) }}>
+      <div className="confirm-dialog">
+        <h3 id="confirm-dialog-title">{confirmDialog.title}</h3>
+        <p>{confirmDialog.message}</p>
+        <div className="confirm-dialog-actions">
+          <button type="button" className="ghost" onClick={() => setConfirmDialog(null)}>Cancelar</button>
+          <button type="button" className={confirmDialog.tone === 'info' ? 'info-action' : 'danger'} onClick={runConfirmedAction}>{confirmDialog.confirmLabel}</button>
+        </div>
+      </div>
+    </div>}
     <MovementModal open={modal} onClose={() => { setModal(false); setEditing(null) }} onSave={save} accounts={accounts} categories={categories} editing={editing} defaultType={newType} />
   </div>
 }
