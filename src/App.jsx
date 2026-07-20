@@ -681,20 +681,8 @@ export default function App() {
     const account = accounts.find(a => a.id === accountId)
     if (!account) return 0
 
-    // La cuenta básica es la primera cuenta creada por el usuario. Su saldo representa
-    // el patrimonio líquido total: saldo disponible actual + dinero acumulado en ahorros.
-    const basicAccount = [...accounts].sort((a, b) => {
-      const dateA = a.created_at ? new Date(a.created_at).getTime() : Number.MAX_SAFE_INTEGER
-      const dateB = b.created_at ? new Date(b.created_at).getTime() : Number.MAX_SAFE_INTEGER
-      if (dateA !== dateB) return dateA - dateB
-      return String(a.id || '').localeCompare(String(b.id || ''))
-    })[0] || accounts[0]
-
-    if (accountId === basicAccount?.id) {
-      return closingBalance + savingsBalance
-    }
-
-    const manualBalance = Number(account.initial_balance) || 0
+    // Todas las transferencias modifican únicamente los saldos de las cuentas:
+    // salen de la cuenta de origen y se suman en la cuenta de destino.
     const transferDelta = movements
       .filter(movement => movement.account_id === accountId && isTransferMovement(movement))
       .reduce((sum, movement) => {
@@ -704,6 +692,21 @@ export default function App() {
         return sum
       }, 0)
 
+    // La cuenta básica es la primera cuenta creada por el usuario. Al comenzar, concentra
+    // todo el patrimonio líquido: saldo disponible actual + dinero acumulado en ahorros.
+    // Luego se ajusta con las transferencias recibidas y enviadas por esa misma cuenta.
+    const basicAccount = [...accounts].sort((a, b) => {
+      const dateA = a.created_at ? new Date(a.created_at).getTime() : Number.MAX_SAFE_INTEGER
+      const dateB = b.created_at ? new Date(b.created_at).getTime() : Number.MAX_SAFE_INTEGER
+      if (dateA !== dateB) return dateA - dateB
+      return String(a.id || '').localeCompare(String(b.id || ''))
+    })[0] || accounts[0]
+
+    if (accountId === basicAccount?.id) {
+      return closingBalance + savingsBalance + transferDelta
+    }
+
+    const manualBalance = Number(account.initial_balance) || 0
     return manualBalance + transferDelta
   }
 
