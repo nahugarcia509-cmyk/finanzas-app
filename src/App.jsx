@@ -1333,6 +1333,24 @@ export default function App() {
     [savingsMovements, month]
   )
 
+  // Datos específicos del gráfico de distribución de Inicio.
+  // Incluye siempre la categoría Ahorros cuando existen aportes en el mes.
+  const homeExpenseByCategory = useMemo(() => {
+    const regularCategories = byCategory.filter(item => item.name !== 'Ahorros')
+    if (monthlySavingsDeposits <= 0) return regularCategories.slice(0, 6)
+
+    const savingsCategory = {
+      name: 'Ahorros',
+      value: monthlySavingsDeposits,
+      count: savingsMovements.filter(item => savingsKind(item) === 'deposit' && item.date?.startsWith(month)).length
+    }
+
+    return [...regularCategories.slice(0, 5), savingsCategory]
+      .sort((a, b) => b.value - a.value)
+  }, [byCategory, monthlySavingsDeposits, savingsMovements, month])
+
+  const homeExpenseCategoryTotal = expenseWithoutSavings + monthlySavingsDeposits
+
   const allocatedSavingsGoals = useMemo(() => {
     let available = Math.max(savingsBalance, 0)
 
@@ -2373,7 +2391,7 @@ export default function App() {
           <article className="panel home-chart-panel">
             <div className="panel-title">
               <div>
-                <ChartInfoTitle title="Distribución de gastos por categoría" text="Muestra qué porcentaje del gasto mensual corresponde a cada categoría. Las categorías con mayor participación concentran la mayor parte de los egresos." />
+                <ChartInfoTitle title="Distribución de gastos por categoría" text="Muestra qué porcentaje del gasto mensual corresponde a cada categoría, incluyendo los aportes enviados a Ahorros." />
                 <span>Participación sobre el gasto del mes</span>
               </div>
             </div>
@@ -2381,21 +2399,21 @@ export default function App() {
               <div className="chart home-donut-chart">
                 <ResponsiveContainer>
                   <PieChart>
-                    <Pie data={byCategory.slice(0,6)} dataKey="value" nameKey="name" innerRadius="55%" outerRadius="82%" paddingAngle={2}>
-                      {byCategory.slice(0,6).map((_,i)=><Cell key={i} fill={palette[i%palette.length]} />)}
+                    <Pie data={homeExpenseByCategory} dataKey="value" nameKey="name" innerRadius="55%" outerRadius="82%" paddingAngle={2}>
+                      {homeExpenseByCategory.map((_,i)=><Cell key={i} fill={palette[i%palette.length]} />)}
                     </Pie>
                     <Tooltip formatter={v=>money(v)} contentStyle={{background:'#071524',border:'1px solid #365b7d',borderRadius:10,color:'#f8fbff',boxShadow:'0 12px 30px rgba(0,0,0,.42)'}} labelStyle={{color:'#f8fbff',fontWeight:800}} itemStyle={{color:'#f8fbff'}} />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
               <div className="home-category-legend">
-                {byCategory.slice(0,6).map((item,i)=><div key={item.name}>
+                {homeExpenseByCategory.map((item,i)=><div key={item.name}>
                   <span className="legend-dot" style={{background:palette[i%palette.length]}} />
                   <b>{item.name}</b>
                   <strong>{money(item.value)}</strong>
-                  <small>{expenseWithoutSavings ? `${((item.value/expenseWithoutSavings)*100).toFixed(1)}%` : '0%'}</small>
+                  <small>{homeExpenseCategoryTotal ? `${((item.value/homeExpenseCategoryTotal)*100).toFixed(1)}%` : '0%'}</small>
                 </div>)}
-                {!byCategory.length && <p className="empty">Sin gastos en el mes seleccionado.</p>}
+                {!homeExpenseByCategory.length && <p className="empty">Sin gastos en el mes seleccionado.</p>}
               </div>
             </div>
             <span className="panel-corner-icon category-corner"><CircleDollarSign /></span>
