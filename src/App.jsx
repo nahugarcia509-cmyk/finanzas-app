@@ -246,7 +246,9 @@ export default function App() {
     kind: 'deposit',
     date: new Date().toISOString().slice(0, 10),
     amount: '',
-    description: ''
+    description: '',
+    from_account_id: '',
+    to_account_id: ''
   })
   const [bigExpenseSearch, setBigExpenseSearch] = useState('')
   const [bigExpenseCategory, setBigExpenseCategory] = useState('all')
@@ -317,7 +319,7 @@ export default function App() {
     setSelectedIncomeCategories(null)
     setSelectedReserveCategories(null)
     setSavingsGoals([])
-    setSavingsForm({ kind: 'deposit', date: new Date().toISOString().slice(0, 10), amount: '', description: '' })
+    setSavingsForm({ kind: 'deposit', date: new Date().toISOString().slice(0, 10), amount: '', description: '', from_account_id: '', to_account_id: '' })
     setGoalForm({ name: '', target: '', priority: 1 })
     setBigExpenseSearch('')
     setBigExpenseCategory('all')
@@ -492,7 +494,12 @@ export default function App() {
       setTransferForm(current => ({
         ...current,
         from_account_id: current.from_account_id || ownAccounts[0]?.id || '',
-        to_account_id: current.to_account_id || ownAccounts[1]?.id || ''
+        to_account_id: current.to_account_id || ownAccounts[1]?.id || ownAccounts[0]?.id || ''
+      }))
+      setSavingsForm(current => ({
+        ...current,
+        from_account_id: current.from_account_id || ownAccounts[0]?.id || '',
+        to_account_id: current.to_account_id || ownAccounts[0]?.id || ''
       }))
     } catch (e) {
       setAccounts([])
@@ -737,6 +744,13 @@ export default function App() {
       return
     }
 
+    const fromAccount = accounts.find(account => account.id === savingsForm.from_account_id)
+    const toAccount = accounts.find(account => account.id === savingsForm.to_account_id)
+    if (!fromAccount || !toAccount) {
+      setNotice('Seleccione la cuenta de origen y la cuenta de destino.')
+      return
+    }
+
     const isDeposit = savingsForm.kind === 'deposit'
     const description = savingsForm.description.trim() || (isDeposit ? 'Aporte a ahorros' : 'Retiro de ahorros')
     const noteMarker = isDeposit ? SAVINGS_DEPOSIT : SAVINGS_WITHDRAWAL
@@ -764,37 +778,71 @@ export default function App() {
       }
     }
 
-    const account = accounts[0]
-    if (!account) {
-      setNotice('No existe una cuenta disponible.')
-      return
-    }
-
-    const payload = {
+    // El movimiento de ahorro se registra una sola vez para que compute en el fondo.
+    // Cuando origen y destino son diferentes, se agregan además dos movimientos internos
+    // de transferencia. Esos movimientos solo cambian los saldos de las cuentas y no
+    // afectan ingresos, egresos ni resultados mensuales.
+    const savingsAccount = isDeposit ? fromAccount : toAccount
+    const savingsPayload = {
       type: isDeposit ? 'expense' : 'income',
       date: savingsForm.date,
       description,
       amount,
-      account_id: account.id,
+      account_id: savingsAccount.id,
       category_id: category.id,
       notes: `${noteMarker} ${description}`
     }
 
+    const accountsAreDifferent = fromAccount.id !== toAccount.id
+    const transferId = accountsAreDifferent ? crypto.randomUUID() : null
+    const transferDescription = isDeposit
+      ? `Ahorro de ${fromAccount.name} a ${toAccount.name}`
+      : `Retiro de ahorro de ${fromAccount.name} a ${toAccount.name}`
+    const transferRows = accountsAreDifferent ? [
+      {
+        user_id: session?.user?.id,
+        type: 'expense',
+        date: savingsForm.date,
+        description: transferDescription,
+        amount,
+        account_id: fromAccount.id,
+        category_id: null,
+        notes: `${TRANSFER_OUT} ${transferId}`
+      },
+      {
+        user_id: session?.user?.id,
+        type: 'income',
+        date: savingsForm.date,
+        description: transferDescription,
+        amount,
+        account_id: toAccount.id,
+        category_id: null,
+        notes: `${TRANSFER_IN} ${transferId}`
+      }
+    ] : []
+
     if (!configured) {
-      const row = {
-        ...payload,
+      const savingsRow = {
+        ...savingsPayload,
         id: crypto.randomUUID(),
-        accounts: { name: account.name },
+        accounts: { name: savingsAccount.name },
         categories: { name: category.name }
       }
-      const next = [row, ...movements]
+      const localTransferRows = transferRows.map((row, index) => ({
+        ...row,
+        id: `${transferId}-${index}`,
+        accounts: { name: index === 0 ? fromAccount.name : toAccount.name },
+        categories: null
+      }))
+      const next = [savingsRow, ...localTransferRows, ...movements]
       setMovements(next)
       localStorage.setItem('finance_demo', JSON.stringify(next))
     } else {
-      const { error } = await supabase.from('transactions').insert({
-        ...payload,
-        user_id: session.user.id
-      })
+      const rowsToInsert = [
+        { ...savingsPayload, user_id: session.user.id },
+        ...transferRows
+      ]
+      const { error } = await supabase.from('transactions').insert(rowsToInsert)
       if (error) {
         setNotice(error.message)
         return
@@ -806,11 +854,21 @@ export default function App() {
       kind: 'deposit',
       date: new Date().toISOString().slice(0, 10),
       amount: '',
-      description: ''
+      description: '',
+      from_account_id: fromAccount.id,
+      to_account_id: toAccount.id
     })
-    setNotice(isDeposit ? 'Dinero guardado en ahorros.' : 'Dinero retirado de ahorros.')
-  }
 
+    if (accountsAreDifferent) {
+      setNotice(isDeposit
+        ? `Ahorro registrado y ${money(amount)} transferidos de ${fromAccount.name} a ${toAccount.name}.`
+        : `Retiro registrado y ${money(amount)} transferidos de ${fromAccount.name} a ${toAccount.name}.`)
+    } else {
+      setNotice(isDeposit
+        ? 'Dinero guardado en ahorros sin modificar el saldo de la cuenta.'
+        : 'Dinero retirado de ahorros sin modificar el saldo de la cuenta.')
+    }
+  }
 
   const saveSavingsGoal = (e) => {
     e.preventDefault()
@@ -1681,6 +1739,12 @@ export default function App() {
       .goal-actions button { padding:6px; min-width:32px; }
       @media (max-width:1000px) { .goal-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
       @media (max-width:650px) { .goal-grid { grid-template-columns:1fr; } }
+      .savings-account-form { display:grid !important; grid-template-columns:repeat(6,minmax(135px,1fr)); gap:12px !important; width:100%; }
+      .savings-account-form .grow { grid-column:span 2; }
+      .savings-account-form button { min-height:42px; }
+      .savings-account-note { display:block; margin-top:12px; color:#8fb0d3; line-height:1.5; }
+      @media (max-width:1100px) { .savings-account-form { grid-template-columns:repeat(3,minmax(0,1fr)); } .savings-account-form .grow { grid-column:span 2; } }
+      @media (max-width:700px) { .savings-account-form { grid-template-columns:1fr !important; } .savings-account-form .grow { grid-column:auto; } }
     `}</style>
     <style>{`
       .app, .app * { box-sizing: border-box; }
@@ -2808,11 +2872,23 @@ export default function App() {
             <div className="entry-icon"><PiggyBank /></div>
             <h2>Movimiento de ahorros</h2>
             <p>Guardar dinero reduce el saldo disponible. Retirarlo devuelve el dinero al saldo general.</p>
-            <form className="category-form" onSubmit={saveSavingsMovement} style={{ alignItems: 'end' }}>
+            <form className="category-form savings-account-form" onSubmit={saveSavingsMovement} style={{ alignItems: 'end' }}>
               <label>Operación
                 <select value={savingsForm.kind} onChange={e => setSavingsForm({ ...savingsForm, kind: e.target.value })}>
                   <option value="deposit">Guardar en ahorros</option>
                   <option value="withdrawal">Retirar de ahorros</option>
+                </select>
+              </label>
+              <label>Origen
+                <select value={savingsForm.from_account_id} onChange={e => setSavingsForm({ ...savingsForm, from_account_id: e.target.value })} required>
+                  <option value="">Seleccionar cuenta</option>
+                  {accounts.map(account => <option key={`savings-from-${account.id}`} value={account.id}>{account.name}</option>)}
+                </select>
+              </label>
+              <label>Destino
+                <select value={savingsForm.to_account_id} onChange={e => setSavingsForm({ ...savingsForm, to_account_id: e.target.value })} required>
+                  <option value="">Seleccionar cuenta</option>
+                  {accounts.map(account => <option key={`savings-to-${account.id}`} value={account.id}>{account.name}</option>)}
                 </select>
               </label>
               <label>Fecha
@@ -2826,6 +2902,9 @@ export default function App() {
               </label>
               <button type="submit">{savingsForm.kind === 'deposit' ? <><Download /> Guardar dinero</> : <><Upload /> Retirar dinero</>}</button>
             </form>
+            <small className="savings-account-note">
+              Si origen y destino son la misma cuenta, el ahorro se registra pero el saldo de esa cuenta no cambia. Si son diferentes, el importe se descuenta del origen y se suma al destino.
+            </small>
           </article>
         </section>
 
