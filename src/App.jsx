@@ -2538,6 +2538,158 @@ export default function App() {
       @media (max-width:900px) { .control-sections-grid { grid-template-columns:1fr; } .transfer-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .account-management-form { grid-template-columns:1fr 1fr; } .skeleton-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
       @media (max-width:600px) { .control-form-grid.two-cols, .transfer-grid, .account-management-form { grid-template-columns:1fr; } .transfer-description { grid-column:1; } .skeleton-grid { grid-template-columns:1fr; } }
     `}</style>
+    <style>{`
+      /* Ajuste final y uniforme de iconos en todas las cards */
+      .kpi-info-card,
+      .kpis article,
+      .top-insight-card {
+        position: relative !important;
+        overflow: visible !important;
+        padding: 18px 58px 18px 18px !important;
+      }
+      .kpi-info-card .kpi-help,
+      .kpis article .card-help,
+      .kpis article .kpi-help,
+      .top-insight-card .kpi-help,
+      .top-insight-card .card-help {
+        position: absolute !important;
+        top: 14px !important;
+        right: 18px !important;
+        bottom: auto !important;
+        left: auto !important;
+        margin: 0 !important;
+        transform: none !important;
+        width: 22px !important;
+        height: 22px !important;
+        min-width: 22px !important;
+        z-index: 50 !important;
+      }
+      .kpi-info-card .kpi-card-icon,
+      .top-insight-card .kpi-card-icon,
+      .kpis article > svg,
+      .top-insight-card > svg {
+        position: absolute !important;
+        right: 18px !important;
+        bottom: 16px !important;
+        top: auto !important;
+        left: auto !important;
+        margin: 0 !important;
+        transform: none !important;
+        width: 28px !important;
+        height: 28px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        color: #7394b8 !important;
+        opacity: .95 !important;
+        pointer-events: none !important;
+      }
+      .kpi-info-card .kpi-card-icon > svg,
+      .top-insight-card .kpi-card-icon > svg {
+        width: 26px !important;
+        height: 26px !important;
+        position: static !important;
+        margin: 0 !important;
+        transform: none !important;
+      }
+      .kpi-info-card > small,
+      .kpis article > small,
+      .top-insight-card > small {
+        display: block !important;
+        padding-right: 34px !important;
+      }
+
+      /* Metas: acciones en una sola fila y sin superposiciones */
+      .goal-card {
+        position: relative !important;
+        padding: 18px !important;
+        overflow: hidden !important;
+      }
+      .goal-card header {
+        display: block !important;
+        min-height: 92px !important;
+        padding: 0 148px 14px 0 !important;
+        margin: 0 0 12px !important;
+        border-bottom: 1px solid #203852 !important;
+        overflow: visible !important;
+      }
+      .goal-card-main, .goal-title-line {
+        width: 100% !important;
+        min-width: 0 !important;
+      }
+      .goal-title-line {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: flex-start !important;
+        gap: 8px !important;
+        flex-wrap: wrap !important;
+      }
+      .goal-title-line h3 {
+        flex: 1 1 180px !important;
+        min-width: 0 !important;
+        margin: 0 !important;
+        white-space: normal !important;
+        overflow-wrap: anywhere !important;
+        word-break: break-word !important;
+      }
+      .goal-priority {
+        flex: 0 0 auto !important;
+      }
+      .goal-target {
+        display: flex !important;
+        align-items: baseline !important;
+        gap: 8px !important;
+        margin-top: 10px !important;
+        white-space: normal !important;
+      }
+      .goal-actions {
+        position: absolute !important;
+        top: 16px !important;
+        right: 16px !important;
+        width: auto !important;
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center !important;
+        justify-content: flex-end !important;
+        gap: 6px !important;
+        z-index: 5 !important;
+      }
+      .goal-actions button {
+        width: 32px !important;
+        height: 32px !important;
+        min-width: 32px !important;
+        padding: 0 !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        border-radius: 8px !important;
+        line-height: 1 !important;
+      }
+      .goal-actions button svg {
+        width: 17px !important;
+        height: 17px !important;
+      }
+      .goal-progress-head {
+        margin-top: 0 !important;
+      }
+      .goal-stat-grid {
+        width: 100% !important;
+      }
+      @media (max-width: 720px) {
+        .goal-card header {
+          padding-right: 0 !important;
+          padding-top: 46px !important;
+          min-height: 126px !important;
+        }
+        .goal-actions {
+          top: 12px !important;
+          right: 12px !important;
+        }
+        .goal-stat-grid {
+          grid-template-columns: 1fr !important;
+        }
+      }
+    `}</style>
     <header><div className="brand"><div className="brand-icon"><WalletCards /></div><div><b>Mis Finanzas</b><small>Información sincronizada y siempre disponible</small></div></div><div className="header-actions"><button className={`ghost header-icon ${filtersOpen || Object.values(filters).some(v => v && v !== 'all') ? 'active' : ''}`} onClick={() => { setFilterDraft(filters); setFiltersOpen(true) }} title="Filtros"><SlidersHorizontal />{Object.values(filters).some(v => v && v !== 'all') && <span className="filter-dot" />}</button><button className={`ghost header-icon ${notificationsOpen ? 'active' : ''}`} onClick={() => setNotificationsOpen(true)} title="Notificaciones"><Bell />{notifications.length > 0 && <span className="notification-badge">{notifications.length}</span>}</button><button className="secondary" onClick={() => openNew('income')}><ArrowUpCircle /> Ingreso</button><button onClick={() => openNew('expense')}><ArrowDownCircle /> Egreso</button>{isMobileViewport && <button className="ghost mobile-quick-return" onClick={() => setMobileQuickMode(true)} title="Vista rápida"><Home /></button>}{configured && <button className="ghost" onClick={() => supabase.auth.signOut()} title="Cerrar sesión" aria-label="Cerrar sesión"><LogOut /></button>}</div></header>
     {isMobileViewport && !mobileQuickMode && <button type="button" className="mobile-quick-floating-return" onClick={() => setMobileQuickMode(true)} aria-label="Volver a vista rápida"><Home /> Vista rápida</button>}
     {filtersOpen && <div className="overlay-panel" onMouseDown={() => setFiltersOpen(false)}>
