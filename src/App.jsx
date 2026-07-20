@@ -1427,12 +1427,42 @@ export default function App() {
     forecastExpenseCurrent + recurringForecastPending
   )
 
-  // El saldo actual del mes (closingBalance) ya incluye todos los movimientos reales,
-  // incluidos los aportes a ahorros. Para la predicción sólo se descuentan los gastos
-  // que todavía faltan hasta alcanzar el gasto total proyectado. De esta forma los
-  // ahorros se descuentan una sola vez y nunca se inflan artificialmente en la proyección.
+  // La predicción parte del saldo real disponible en las cuentas, no del balance
+  // contable mensual. Los aportes a ahorros ya están reflejados en ese saldo manual y
+  // por eso se muestran como informativos, sin volver a descontarlos.
+  const currentAccountsBalance = useMemo(
+    () => accounts.reduce((sum, account) => sum + accountBalance(account.id), 0),
+    [accounts, movements]
+  )
   const forecastRemainingExpense = Math.max(forecastExpense - forecastExpenseCurrent, 0)
-  const forecastClosing = closingBalance - forecastRemainingExpense
+  const forecastClosing = currentAccountsBalance - forecastRemainingExpense
+
+  const forecastChartData = useMemo(() => {
+    const currentDay = month === monthKey()
+      ? Math.min(Math.max(new Date().getDate(), 1), daysInSelectedMonth)
+      : daysInSelectedMonth
+    const futureDays = Math.max(daysInSelectedMonth - currentDay, 1)
+    const recurringByDay = recurringForecastDetails.reduce((out, item) => {
+      const day = Math.min(Math.max(Number(item.expectedDay) || currentDay + 1, currentDay + 1), daysInSelectedMonth)
+      out[day] = (out[day] || 0) + Number(item.pendingAmount || 0)
+      return out
+    }, {})
+    const paceOnlyPending = Math.max(forecastRemainingExpense - recurringForecastPending, 0)
+    const dailyPace = paceOnlyPending / futureDays
+    let projectedBalance = currentAccountsBalance
+
+    return Array.from({ length: daysInSelectedMonth }, (_, index) => {
+      const day = index + 1
+      if (day > currentDay) {
+        projectedBalance -= dailyPace
+        projectedBalance -= recurringByDay[day] || 0
+      }
+      return {
+        day,
+        saldoProyectado: day < currentDay ? null : projectedBalance
+      }
+    })
+  }, [month, daysInSelectedMonth, currentAccountsBalance, forecastRemainingExpense, recurringForecastPending, recurringForecastDetails])
 
   const openForecastCategoryModal = () => {
     setForecastCategoryDraft([...forecastIncludedCategories])
@@ -2157,6 +2187,9 @@ export default function App() {
       .forecast-summary-list > div:last-child { border-bottom:0; }
       .forecast-summary-list span { color:#8fb0d3; font-size:12px; line-height:1.35; }
       .forecast-summary-list b { color:#eef7ff; font-size:12px; text-align:right; white-space:nowrap; }
+      .forecast-summary-list .forecast-summary-total { margin-top:4px; padding:10px 12px; border:1px solid rgba(56,189,248,.35); border-radius:10px; background:rgba(56,189,248,.07); }
+      .forecast-summary-list .forecast-summary-total span { color:#d9ecff; font-weight:800; }
+      .forecast-summary-list .forecast-summary-total b { font-size:14px; }
       .forecast-category-summary { display:block; margin-top:8px; color:#8fb0d3; font-size:12px; line-height:1.4; }
       .forecast-category-dialog { width:min(560px,100%); max-height:min(78vh,720px); display:flex; flex-direction:column; border:1px solid #365675; border-radius:16px; background:#0b1b2f; box-shadow:0 24px 70px rgba(0,0,0,.55); overflow:hidden; }
       .forecast-category-dialog header { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; padding:20px 20px 14px; border-bottom:1px solid #29405c; }
@@ -2335,12 +2368,12 @@ export default function App() {
                 <strong className={forecastClosing>=0?'positive':'negative'}>{money(forecastClosing)}</strong>
                 <p>Saldo estimado al finalizar el mes seleccionado.</p>
                 <div className="forecast-summary-list">
-                  <div><span>Saldo actual</span><b>{money(closingBalance)}</b></div>
-                  <div><span>Gastos actuales considerados</span><b>{money(forecastExpenseCurrent)}</b></div>
-                  <div><span>Gasto total proyectado</span><b>{money(forecastExpense)}</b></div>
-                  <div><span>Gastos futuros pendientes</span><b>{money(forecastRemainingExpense)}</b></div>
-                  <div><span>Ahorros ya descontados del saldo</span><b>{money(monthlySavingsDeposits)}</b></div>
-                  <div><span>Recurrentes pendientes estimados</span><b>{money(recurringForecastPending)}</b></div>
+                  <div><span>Saldo actual de las cuentas</span><b>{money(currentAccountsBalance)}</b></div>
+                  <div><span>Gasto registrado este mes</span><b>{money(forecastExpenseCurrent)}</b></div>
+                  <div><span>Gasto pendiente proyectado</span><b>{money(forecastRemainingExpense)}</b></div>
+                  <div><span>Gastos recurrentes incluidos</span><b>{money(recurringForecastPending)}</b></div>
+                  <div><span>Ahorros ya descontados</span><b>{money(monthlySavingsDeposits)}</b></div>
+                  <div className="forecast-summary-total"><span>Saldo estimado al cierre</span><b className={forecastClosing >= 0 ? 'positive' : 'negative'}>{money(forecastClosing)}</b></div>
                 </div>
                 <button type="button" className="secondary forecast-category-trigger" onClick={openForecastCategoryModal}>
                   <Settings2 /> Seleccionar categorías
@@ -2353,12 +2386,12 @@ export default function App() {
               </div>
               <div className="chart prediction-mini-chart">
                 <ResponsiveContainer>
-                  <LineChart data={daily} margin={{top:10,right:12,left:0,bottom:0}}>
+                  <LineChart data={forecastChartData} margin={{top:10,right:12,left:0,bottom:0}}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#203047" />
                     <XAxis dataKey="day" stroke="#7890a8" tick={{fontSize:10}} />
                     <YAxis stroke="#7890a8" tick={{fontSize:10}} tickFormatter={v=>`$${Math.round(v/1000)}k`} />
                     <Tooltip formatter={v=>money(v)} contentStyle={{background:'#071524',border:'1px solid #365b7d',borderRadius:10,color:'#f8fbff',boxShadow:'0 12px 30px rgba(0,0,0,.42)'}} labelStyle={{color:'#f8fbff',fontWeight:800}} itemStyle={{color:'#f8fbff'}} />
-                    <Line type="monotone" dataKey="acumulado" name="Saldo" stroke="#4ade80" strokeWidth={3} dot={false} />
+                    <Line type="monotone" dataKey="saldoProyectado" name="Saldo proyectado" stroke="#4ade80" strokeWidth={3} dot={false} connectNulls />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
