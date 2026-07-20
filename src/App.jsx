@@ -221,6 +221,9 @@ export default function App() {
   const [dashboardView, setDashboardView] = useState('overview')
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [forecastCategoryModalOpen, setForecastCategoryModalOpen] = useState(false)
+  const [selectedForecastCategories, setSelectedForecastCategories] = useState(null)
+  const [forecastCategoryDraft, setForecastCategoryDraft] = useState([])
   const emptyFilters = { dateFrom: '', dateTo: '', category: 'all', minAmount: '', maxAmount: '' }
   const [filters, setFilters] = useState(emptyFilters)
   const [filterDraft, setFilterDraft] = useState(emptyFilters)
@@ -254,7 +257,8 @@ export default function App() {
   const [dataLoading, setDataLoading] = useState(false)
   const [userSettings, setUserSettings] = useState({ opening_balance_month: '', opening_balance_amount: 0 })
   const [settingsDraft, setSettingsDraft] = useState({ opening_balance_month: '', opening_balance_amount: '' })
-  const [accountForm, setAccountForm] = useState({ id: null, name: '', initial_balance: '' })
+  const [accountForm, setAccountForm] = useState({ name: '', initial_balance: '' })
+  const [editingAccountId, setEditingAccountId] = useState(null)
   const [transferForm, setTransferForm] = useState({ from_account_id: '', to_account_id: '', amount: '', date: new Date().toISOString().slice(0, 10), description: '' })
   const [confirmDialog, setConfirmDialog] = useState(null)
   const [preferencesLoaded, setPreferencesLoaded] = useState(false)
@@ -295,6 +299,9 @@ export default function App() {
     setMovements([])
     setSearch('')
     setNotice('')
+    setForecastCategoryModalOpen(false)
+    setSelectedForecastCategories(null)
+    setForecastCategoryDraft([])
     setFilters(emptyFilters)
     setFilterDraft(emptyFilters)
     setComparisonMonth(previousMonth)
@@ -496,28 +503,60 @@ export default function App() {
     setNotice('Configuración financiera guardada.')
   }
 
+  const resetAccountForm = () => {
+    setEditingAccountId(null)
+    setAccountForm({ name: '', initial_balance: '' })
+  }
+
+  const startEditingAccount = (account) => {
+    setEditingAccountId(account.id)
+    setAccountForm({
+      name: account.name || '',
+      initial_balance: account.initial_balance ?? ''
+    })
+  }
+
   const saveAccountRecord = async (e) => {
     e.preventDefault()
     const name = accountForm.name.trim()
     const initialBalance = Number(accountForm.initial_balance) || 0
+    const wasEditing = editingAccountId !== null && editingAccountId !== undefined && editingAccountId !== ''
+
     if (!name) return setNotice('Ingrese un nombre para la cuenta.')
 
     if (!configured) {
-      const next = accountForm.id
-        ? accounts.map(a => a.id === accountForm.id ? { ...a, name, initial_balance: initialBalance } : a)
-        : [...accounts, { id: crypto.randomUUID(), name, initial_balance: initialBalance }]
-      setAccounts(next)
-      setAccountForm({ id: null, name: '', initial_balance: '' })
+      setAccounts(current => wasEditing
+        ? current.map(account => account.id === editingAccountId
+          ? { ...account, name, initial_balance: initialBalance }
+          : account)
+        : [...current, { id: crypto.randomUUID(), name, initial_balance: initialBalance }]
+      )
+      resetAccountForm()
+      setNotice(wasEditing ? 'Cuenta actualizada.' : 'Cuenta creada.')
       return
     }
 
-    const wasEditing = Boolean(accountForm.id)
-    const query = wasEditing
-      ? supabase.from('accounts').update({ name, initial_balance: initialBalance }).eq('id', accountForm.id).eq('user_id', session.user.id)
-      : supabase.from('accounts').insert({ name, initial_balance: initialBalance, user_id: session.user.id })
-    const { error } = await query
-    if (error) return setNotice(error.message)
-    setAccountForm({ id: null, name: '', initial_balance: '' })
+    if (!session?.user?.id) return setNotice('No existe una sesión activa.')
+
+    if (wasEditing) {
+      const { data, error } = await supabase
+        .from('accounts')
+        .update({ name, initial_balance: initialBalance })
+        .eq('id', editingAccountId)
+        .eq('user_id', session.user.id)
+        .select('id')
+        .maybeSingle()
+
+      if (error) return setNotice(error.message)
+      if (!data?.id) return setNotice('No se encontró la cuenta para actualizar. No se creó ninguna cuenta nueva.')
+    } else {
+      const { error } = await supabase
+        .from('accounts')
+        .insert({ name, initial_balance: initialBalance, user_id: session.user.id })
+      if (error) return setNotice(error.message)
+    }
+
+    resetAccountForm()
     await loadAll()
     setNotice(wasEditing ? 'Cuenta actualizada.' : 'Cuenta creada.')
   }
@@ -535,7 +574,7 @@ export default function App() {
         if (!configured) {
           setMovements(current => current.map(m => m.account_id === account.id ? { ...m, account_id: null, accounts: null } : m))
           setAccounts(current => current.filter(a => a.id !== account.id))
-          setAccountForm(current => current.id === account.id ? { id: null, name: '', initial_balance: '' } : current)
+          editingAccountId === account.id && resetAccountForm()
           return
         }
 
@@ -562,7 +601,7 @@ export default function App() {
           return
         }
 
-        setAccountForm(current => current.id === account.id ? { id: null, name: '', initial_balance: '' } : current)
+        editingAccountId === account.id && resetAccountForm()
         await loadAll()
         setNotice('Cuenta eliminada. Los movimientos asociados se conservaron sin cuenta asignada.')
       }
@@ -1244,8 +1283,60 @@ export default function App() {
   const previousMonthRows = useMemo(() => financialMovements.filter(x => x.date?.startsWith(comparisonMonth)), [financialMovements, comparisonMonth])
   const previousIncome = previousMonthRows.filter(x => x.type === 'income').reduce((s,x)=>s+Number(x.amount),0)
   const previousExpense = previousMonthRows.filter(x => x.type === 'expense' && savingsKind(x) !== 'deposit').reduce((s,x)=>s+Number(x.amount),0)
-  const forecastExpense = daysWithExpense ? (expenseWithoutSavings / Math.max(new Date().getDate(),1)) * daysInSelectedMonth : expenseWithoutSavings
+  const forecastAvailableCategories = useMemo(
+    () => [...new Set(expenseRowsWithoutSavings.map(item => item.categories?.name || 'Sin categoría'))].sort(),
+    [expenseRowsWithoutSavings]
+  )
+
+  useEffect(() => {
+    setSelectedForecastCategories(current => {
+      if (!Array.isArray(current)) return forecastAvailableCategories
+      const valid = current.filter(name => forecastAvailableCategories.includes(name))
+      const missing = forecastAvailableCategories.filter(name => !current.includes(name))
+      return [...valid, ...missing]
+    })
+  }, [forecastAvailableCategories])
+
+  const forecastIncludedCategories = Array.isArray(selectedForecastCategories)
+    ? selectedForecastCategories
+    : forecastAvailableCategories
+
+  const forecastExpenseRows = useMemo(
+    () => expenseRowsWithoutSavings.filter(item =>
+      forecastIncludedCategories.includes(item.categories?.name || 'Sin categoría')
+    ),
+    [expenseRowsWithoutSavings, forecastIncludedCategories]
+  )
+
+  const forecastExpenseCurrent = useMemo(
+    () => forecastExpenseRows.reduce((sum, item) => sum + Number(item.amount), 0),
+    [forecastExpenseRows]
+  )
+
+  const forecastExpenseDays = new Set(forecastExpenseRows.map(item => item.date)).size
+  const currentDayForForecast = month === monthKey()
+    ? Math.max(new Date().getDate(), 1)
+    : daysInSelectedMonth
+  const forecastExpense = forecastExpenseDays
+    ? (forecastExpenseCurrent / currentDayForForecast) * daysInSelectedMonth
+    : 0
   const forecastClosing = openingBalance + income - forecastExpense - monthlySavingsDeposits
+
+  const openForecastCategoryModal = () => {
+    setForecastCategoryDraft([...forecastIncludedCategories])
+    setForecastCategoryModalOpen(true)
+  }
+
+  const toggleForecastCategory = (name) => {
+    setForecastCategoryDraft(current =>
+      current.includes(name) ? current.filter(item => item !== name) : [...current, name]
+    )
+  }
+
+  const applyForecastCategories = () => {
+    setSelectedForecastCategories([...forecastCategoryDraft])
+    setForecastCategoryModalOpen(false)
+  }
   const nextGoal = allocatedSavingsGoals.find(g => !g.completed)
   const notifications = useMemo(() => {
     const out = []
@@ -1842,6 +1933,23 @@ export default function App() {
       .skeleton-card { height:110px; border-radius:14px; background:linear-gradient(90deg,#0d1c30 25%,#152a43 50%,#0d1c30 75%); background-size:200% 100%; animation:skeletonPulse 1.25s infinite; }
       @keyframes skeletonPulse { from { background-position:200% 0; } to { background-position:-200% 0; } }
       .confirm-backdrop { position:fixed; inset:0; z-index:1000000; background:rgba(1,8,18,.72); backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; padding:20px; }
+      .forecast-category-trigger { display:inline-flex; align-items:center; gap:8px; margin-top:16px; width:max-content; max-width:100%; }
+      .forecast-category-trigger svg { width:17px; height:17px; }
+      .forecast-category-summary { display:block; margin-top:8px; color:#8fb0d3; font-size:12px; line-height:1.4; }
+      .forecast-category-dialog { width:min(560px,100%); max-height:min(78vh,720px); display:flex; flex-direction:column; border:1px solid #365675; border-radius:16px; background:#0b1b2f; box-shadow:0 24px 70px rgba(0,0,0,.55); overflow:hidden; }
+      .forecast-category-dialog header { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; padding:20px 20px 14px; border-bottom:1px solid #29405c; }
+      .forecast-category-dialog header h3 { margin:0 0 5px; }
+      .forecast-category-dialog header p { margin:0; color:#8fb0d3; font-size:13px; line-height:1.45; }
+      .forecast-category-dialog .icon-close { width:38px; min-width:38px; height:38px; padding:0 !important; display:flex; align-items:center; justify-content:center; }
+      .forecast-category-toolbar { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; padding:12px 20px; border-bottom:1px solid #223a55; }
+      .forecast-category-toolbar span { color:#9fb3c8; font-size:13px; }
+      .forecast-category-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; padding:16px 20px; overflow:auto; }
+      .forecast-category-option { display:flex; align-items:center; gap:11px; min-width:0; padding:12px; border:1px solid #294866; border-radius:11px; background:#0d2036; color:#eaf4ff; cursor:pointer; transition:border-color .15s ease, background .15s ease; }
+      .forecast-category-option:hover { border-color:#38bdf8; background:#102a46; }
+      .forecast-category-option input { width:18px !important; min-width:18px !important; height:18px !important; min-height:18px !important; margin:0; accent-color:#38bdf8; }
+      .forecast-category-option span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .forecast-category-actions { display:flex; justify-content:flex-end; gap:10px; padding:14px 20px 20px; border-top:1px solid #29405c; }
+      @media (max-width:620px) { .forecast-category-list { grid-template-columns:1fr; } }
       .confirm-dialog { width:min(480px,100%); border:1px solid #365675; border-radius:16px; background:#0b1b2f; box-shadow:0 24px 70px rgba(0,0,0,.55); padding:20px; }
       .confirm-dialog h3 { margin:0 0 8px; }
       .confirm-dialog p { margin:0; color:#9fb3c8; line-height:1.55; }
@@ -2004,6 +2112,14 @@ export default function App() {
                 <strong className={forecastClosing>=0?'positive':'negative'}>{money(forecastClosing)}</strong>
                 <p>Saldo estimado al finalizar el mes seleccionado.</p>
                 <small>Gasto proyectado: {money(forecastExpense)}</small>
+                <button type="button" className="secondary forecast-category-trigger" onClick={openForecastCategoryModal}>
+                  <Settings2 /> Seleccionar categorías
+                </button>
+                <span className="forecast-category-summary">
+                  {forecastIncludedCategories.length === forecastAvailableCategories.length
+                    ? 'Se consideran todas las categorías de egreso.'
+                    : `${forecastIncludedCategories.length} de ${forecastAvailableCategories.length} categorías incluidas.`}
+                </span>
               </div>
               <div className="chart prediction-mini-chart">
                 <ResponsiveContainer>
@@ -2574,15 +2690,15 @@ export default function App() {
           <form className="account-management-form" onSubmit={saveAccountRecord}>
             <label>Nombre de la cuenta<input value={accountForm.name} onChange={e => setAccountForm(current => ({ ...current, name: e.target.value }))} placeholder="Ej. Banco o efectivo" /></label>
             <label>Saldo inicial<input type="number" step="0.01" value={accountForm.initial_balance} onChange={e => setAccountForm(current => ({ ...current, initial_balance: e.target.value }))} placeholder="0,00" /></label>
-            <button type="submit">{accountForm.id ? <><Pencil /> Guardar edición</> : <><Plus /> Crear cuenta</>}</button>
-            {accountForm.id && <button type="button" className="ghost" onClick={() => setAccountForm({ id: null, name: '', initial_balance: '' })}>Cancelar</button>}
+            <button type="submit">{editingAccountId ? <><Pencil /> Guardar edición</> : <><Plus /> Crear cuenta</>}</button>
+            {editingAccountId && <button type="button" className="ghost" onClick={resetAccountForm}>Cancelar</button>}
           </form>
           <div className="account-cards-grid">
             {accounts.map(account => <article className="account-card" key={account.id}>
               <div><b>{account.name}</b><small>Saldo manual</small></div>
               <strong>{money(accountBalance(account.id))}</strong>
               <div className="row-actions">
-                <button type="button" className="ghost" onClick={() => setAccountForm({ id: account.id, name: account.name, initial_balance: account.initial_balance ?? '' })}><Pencil /></button>
+                <button type="button" className="ghost" onClick={() => startEditingAccount(account)}><Pencil /></button>
                 <button type="button" className="ghost danger" onClick={() => removeAccount(account)}><Trash2 /></button>
               </div>
             </article>)}
@@ -2626,6 +2742,36 @@ export default function App() {
       </section>}
       </main>
     </div>
+    {forecastCategoryModalOpen && <div className="confirm-backdrop" role="dialog" aria-modal="true" aria-labelledby="forecast-category-title" onMouseDown={e => { if (e.target === e.currentTarget) setForecastCategoryModalOpen(false) }}>
+      <div className="forecast-category-dialog">
+        <header>
+          <div>
+            <h3 id="forecast-category-title">Categorías para la predicción</h3>
+            <p>Seleccione los egresos que deben participar en el cálculo del saldo estimado al cierre del mes.</p>
+          </div>
+          <button type="button" className="ghost icon-close" onClick={() => setForecastCategoryModalOpen(false)} aria-label="Cerrar"><X /></button>
+        </header>
+        <div className="forecast-category-toolbar">
+          <span>{forecastCategoryDraft.length} de {forecastAvailableCategories.length} seleccionadas</span>
+          <div className="row-actions">
+            <button type="button" className="secondary" onClick={() => setForecastCategoryDraft([...forecastAvailableCategories])}>Seleccionar todas</button>
+            <button type="button" className="ghost" onClick={() => setForecastCategoryDraft([])}>Quitar todas</button>
+          </div>
+        </div>
+        <div className="forecast-category-list">
+          {forecastAvailableCategories.map(name => <label className="forecast-category-option" key={name}>
+            <input type="checkbox" checked={forecastCategoryDraft.includes(name)} onChange={() => toggleForecastCategory(name)} />
+            <span>{name}</span>
+          </label>)}
+          {!forecastAvailableCategories.length && <div className="empty">No existen categorías de egreso en el mes seleccionado.</div>}
+        </div>
+        <div className="forecast-category-actions">
+          <button type="button" className="ghost" onClick={() => setForecastCategoryModalOpen(false)}>Cancelar</button>
+          <button type="button" onClick={applyForecastCategories}>Aplicar selección</button>
+        </div>
+      </div>
+    </div>}
+
     {confirmDialog && <div className="confirm-backdrop" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title" onMouseDown={e => { if (e.target === e.currentTarget) setConfirmDialog(null) }}>
       <div className="confirm-dialog">
         <h3 id="confirm-dialog-title">{confirmDialog.title}</h3>
