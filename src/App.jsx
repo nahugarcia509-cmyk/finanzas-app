@@ -2917,6 +2917,66 @@ export default function App() {
         .goal-target { white-space: normal !important; flex-wrap: wrap !important; }
       }
     `}</style>
+    <style>{`
+      /* Ajuste final solicitado: leyenda fuera del trazado y metas con aire interior */
+      .prediction-mini-chart {
+        min-height: 300px !important;
+        padding: 10px 8px 2px !important;
+      }
+      .prediction-mini-chart .recharts-legend-wrapper {
+        position: absolute !important;
+        left: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        top: auto !important;
+        width: 100% !important;
+        padding-top: 8px !important;
+      }
+      .prediction-mini-chart .recharts-default-legend {
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        gap: 18px !important;
+        flex-wrap: wrap !important;
+      }
+
+      .goal-card {
+        padding: 24px !important;
+      }
+      .goal-card header {
+        align-items: center !important;
+        padding: 6px 4px 18px !important;
+        margin: 0 0 18px !important;
+        gap: 22px !important;
+      }
+      .goal-card-main {
+        padding: 0 4px !important;
+      }
+      .goal-title-line h3 {
+        margin: 0 0 12px !important;
+        line-height: 1.25 !important;
+      }
+      .goal-target {
+        margin: 0 !important;
+        align-items: center !important;
+      }
+      .goal-actions {
+        align-self: center !important;
+        padding: 0 2px !important;
+      }
+      .goal-progress-head,
+      .goal-progress,
+      .goal-stat-grid {
+        margin-left: 4px !important;
+        margin-right: 4px !important;
+      }
+      @media (max-width: 720px) {
+        .prediction-mini-chart { min-height: 280px !important; }
+        .goal-card { padding: 18px !important; }
+        .goal-card header { padding: 4px 2px 16px !important; }
+        .goal-card-main { padding: 0 2px !important; }
+      }
+    `}</style>
     <header><div className="brand"><div className="brand-icon"><WalletCards /></div><div><b>Mis Finanzas</b><small>Información sincronizada y siempre disponible</small></div></div><div className="header-actions"><button className={`ghost header-icon ${filtersOpen || Object.values(filters).some(v => v && v !== 'all') ? 'active' : ''}`} onClick={() => { setFilterDraft(filters); setFiltersOpen(true) }} title="Filtros"><SlidersHorizontal />{Object.values(filters).some(v => v && v !== 'all') && <span className="filter-dot" />}</button><button className={`ghost header-icon ${notificationsOpen ? 'active' : ''}`} onClick={() => setNotificationsOpen(true)} title="Notificaciones"><Bell />{notifications.length > 0 && <span className="notification-badge">{notifications.length}</span>}</button><button className="secondary" onClick={() => openNew('income')}><ArrowUpCircle /> Ingreso</button><button onClick={() => openNew('expense')}><ArrowDownCircle /> Egreso</button>{isMobileViewport && <button className="ghost mobile-quick-return" onClick={() => setMobileQuickMode(true)} title="Vista rápida"><Home /></button>}{configured && <button className="ghost" onClick={() => supabase.auth.signOut()} title="Cerrar sesión" aria-label="Cerrar sesión"><LogOut /></button>}</div></header>
     {isMobileViewport && !mobileQuickMode && <button type="button" className="mobile-quick-floating-return" onClick={() => setMobileQuickMode(true)} aria-label="Volver a vista rápida"><Home /> Vista rápida</button>}
     {filtersOpen && <div className="overlay-panel" onMouseDown={() => setFiltersOpen(false)}>
@@ -3109,12 +3169,12 @@ export default function App() {
               </div>
               <div className="chart prediction-mini-chart">
                 <ResponsiveContainer>
-                  <LineChart data={forecastChartData} margin={{top:10,right:12,left:0,bottom:0}}>
+                  <LineChart data={forecastChartData} margin={{top:8,right:12,left:0,bottom:26}}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#203047" />
                     <XAxis dataKey="day" stroke="#7890a8" tick={{fontSize:10}} />
                     <YAxis stroke="#7890a8" tick={{fontSize:10}} tickFormatter={v=>`$${Math.round(v/1000)}k`} />
                     <Tooltip formatter={v=>money(v)} contentStyle={{background:'#071524',border:'1px solid #365b7d',borderRadius:10,color:'#f8fbff',boxShadow:'0 12px 30px rgba(0,0,0,.42)'}} labelStyle={{color:'#f8fbff',fontWeight:800}} itemStyle={{color:'#f8fbff'}} />
-                    <Legend verticalAlign="top" height={28} />
+                    <Legend verticalAlign="bottom" align="center" height={34} wrapperStyle={{paddingTop:8}} />
                     <Line type="monotone" dataKey="saldoReal" name="Saldo real" stroke="#4ade80" strokeWidth={3} dot={false} connectNulls={false} />
                     <Line type="monotone" dataKey="saldoProyectado" name="Saldo proyectado" stroke="#38bdf8" strokeWidth={3} strokeDasharray="7 5" dot={false} connectNulls={false} />
                   </LineChart>
