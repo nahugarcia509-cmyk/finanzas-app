@@ -1599,7 +1599,29 @@ export default function App() {
       header .header-actions { padding-right:70px; }
       @media (max-width:700px) { .floating-settings-button { top:12px; right:12px; width:46px; height:46px; min-width:46px; } header .header-actions { padding-right:58px; } }
       .mobile-quick-return { display:none !important; }
-      @media (max-width:760px) { .mobile-quick-return { display:inline-flex !important; } }
+      .mobile-quick-floating-return { display:none; }
+      @media (max-width:760px) {
+        .mobile-quick-return { display:inline-flex !important; }
+        .mobile-quick-floating-return {
+          position:fixed;
+          right:14px;
+          bottom:16px;
+          z-index:99998;
+          min-height:48px;
+          padding:0 16px !important;
+          border-radius:999px !important;
+          border:1px solid #79d8ff !important;
+          background:#38bdf8 !important;
+          color:#06111f !important;
+          font-weight:900;
+          display:inline-flex !important;
+          align-items:center;
+          justify-content:center;
+          gap:8px;
+          box-shadow:0 12px 30px rgba(0,0,0,.45),0 0 0 4px rgba(56,189,248,.16);
+        }
+        .mobile-quick-floating-return svg { width:20px; height:20px; }
+      }
       /* Sistema unificado de ayuda e iconos */
       .kpi-info-card, .kpis article { position:relative !important; overflow:visible !important; padding:18px 52px 18px 18px !important; min-height:116px; }
       .kpi-info-head { display:block !important; padding-right:0 !important; min-height:auto !important; }
@@ -2059,6 +2081,7 @@ export default function App() {
       @media (max-width:600px) { .control-form-grid.two-cols, .transfer-grid, .account-management-form { grid-template-columns:1fr; } .transfer-description { grid-column:1; } .skeleton-grid { grid-template-columns:1fr; } }
     `}</style>
     <header><div className="brand"><div className="brand-icon"><WalletCards /></div><div><b>Mis Finanzas</b><small>Información sincronizada y siempre disponible</small></div></div><div className="header-actions"><button className={`ghost header-icon ${filtersOpen || Object.values(filters).some(v => v && v !== 'all') ? 'active' : ''}`} onClick={() => { setFilterDraft(filters); setFiltersOpen(true) }} title="Filtros"><SlidersHorizontal />{Object.values(filters).some(v => v && v !== 'all') && <span className="filter-dot" />}</button><button className={`ghost header-icon ${notificationsOpen ? 'active' : ''}`} onClick={() => setNotificationsOpen(true)} title="Notificaciones"><Bell />{notifications.length > 0 && <span className="notification-badge">{notifications.length}</span>}</button><button className="secondary" onClick={() => openNew('income')}><ArrowUpCircle /> Ingreso</button><button onClick={() => openNew('expense')}><ArrowDownCircle /> Egreso</button>{isMobileViewport && <button className="ghost mobile-quick-return" onClick={() => setMobileQuickMode(true)} title="Vista rápida"><Home /></button>}{configured && <button className="ghost" onClick={() => supabase.auth.signOut()} title="Cerrar sesión" aria-label="Cerrar sesión"><LogOut /></button>}</div></header>
+    {isMobileViewport && !mobileQuickMode && <button type="button" className="mobile-quick-floating-return" onClick={() => setMobileQuickMode(true)} aria-label="Volver a vista rápida"><Home /> Vista rápida</button>}
     {filtersOpen && <div className="overlay-panel" onMouseDown={() => setFiltersOpen(false)}>
       <aside className="drawer" onMouseDown={e => e.stopPropagation()}>
         <div className="drawer-head"><div><h2>Filtros</h2><small>Aplicar filtros a los movimientos del mes seleccionado</small></div><button className="ghost" onClick={() => setFiltersOpen(false)}><X /></button></div>
