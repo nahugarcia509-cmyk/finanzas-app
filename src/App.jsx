@@ -1632,6 +1632,49 @@ export default function App() {
     return { first, days, map }
   }, [month, monthRows])
 
+
+  const accountDashboardData = useMemo(() => accounts
+    .map((account, index) => ({
+      id: account.id,
+      name: account.name || `Cuenta ${index + 1}`,
+      saldo: accountBalance(account.id),
+      index
+    }))
+    .sort((a, b) => b.saldo - a.saldo), [accounts, movements, closingBalance, savingsBalance])
+
+  const totalAccountBalance = useMemo(
+    () => accountDashboardData.reduce((sum, account) => sum + Number(account.saldo || 0), 0),
+    [accountDashboardData]
+  )
+
+  const transferHistory = useMemo(() => {
+    const groups = new Map()
+    movements.filter(isTransferMovement).forEach(movement => {
+      const notes = String(movement.notes || '')
+      const transferId = notes.replace(TRANSFER_OUT, '').replace(TRANSFER_IN, '').trim() || movement.id
+      const current = groups.get(transferId) || {
+        id: transferId,
+        date: movement.date,
+        description: movement.description || 'Transferencia entre cuentas',
+        amount: Number(movement.amount) || 0,
+        from: 'Sin cuenta',
+        to: 'Sin cuenta'
+      }
+      const accountName = movement.accounts?.name || accounts.find(account => account.id === movement.account_id)?.name || 'Sin cuenta'
+      if (notes.includes(TRANSFER_OUT)) current.from = accountName
+      if (notes.includes(TRANSFER_IN)) current.to = accountName
+      if (!current.date || String(movement.date || '') > current.date) current.date = movement.date
+      current.amount = Math.max(current.amount, Number(movement.amount) || 0)
+      groups.set(transferId, current)
+    })
+    return [...groups.values()].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
+  }, [movements, accounts])
+
+  const currentMonthTransfers = useMemo(
+    () => transferHistory.filter(item => item.date?.startsWith(month)),
+    [transferHistory, month]
+  )
+
   if (loading) return <div className="center"><RefreshCw className="spin" /> Cargando finanzas…</div>
   if (configured && !session) return <Auth supabase={supabase} />
 
@@ -1767,6 +1810,27 @@ export default function App() {
       .category-table-grid { grid-template-columns:repeat(4,minmax(0,1fr)) !important; }
       .category-detail-card { min-width:0; }
       .category-detail-body { max-height:330px; overflow:auto; }
+
+      .account-dashboard { display:grid; gap:14px; margin-bottom:18px; }
+      .account-dashboard-header h2 { margin:0 0 4px; font-size:22px; }
+      .account-dashboard-header p { margin:0; color:#8aa7c7; }
+      .account-dashboard-kpis { grid-template-columns:repeat(4,minmax(0,1fr)) !important; }
+      .account-dashboard-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:14px; }
+      .account-dashboard-chart { min-width:0; }
+      .account-chart-body { display:grid; grid-template-columns:minmax(230px,.8fr) minmax(260px,1.2fr); align-items:center; gap:12px; }
+      .account-pie-chart { height:250px !important; }
+      .account-bar-chart { height:270px !important; }
+      .account-balance-legend { display:grid; gap:8px; min-width:0; }
+      .account-legend-row { display:grid; grid-template-columns:12px minmax(90px,1fr) auto 54px; align-items:center; gap:9px; padding:9px 10px; border-bottom:1px dashed #29405c; }
+      .account-legend-row:last-child { border-bottom:0; }
+      .legend-dot { width:10px; height:10px; border-radius:50%; }
+      .account-legend-row b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .account-legend-row strong { color:#eaf4ff; }
+      .account-legend-row small { text-align:right; color:#8aa7c7; }
+      .account-transfer-table-wrap { overflow-x:auto; }
+      .account-transfer-history table { width:100%; min-width:760px; }
+      @media (max-width:1200px) { .account-dashboard-kpis { grid-template-columns:repeat(2,minmax(0,1fr)) !important; } .account-dashboard-grid { grid-template-columns:1fr; } }
+      @media (max-width:700px) { .account-dashboard-kpis { grid-template-columns:1fr !important; } .account-chart-body { grid-template-columns:1fr; } .account-pie-chart,.account-bar-chart { height:230px !important; } }
 
       .app-shell { display:flex; min-height:calc(100vh - 76px); width:100%; }
       .side-nav { width:280px; flex:0 0 280px; border-right:1px solid #29405c; background:#091729; padding:14px 10px; transition:width .22s ease, flex-basis .22s ease, padding .22s ease; overflow:hidden; }
@@ -3087,6 +3151,73 @@ export default function App() {
             <h1>Gestión de cuentas</h1>
             <p>Consultar, crear y organizar el dinero disponible en cada cuenta.</p>
           </div>
+        </section>
+
+        <section className="account-dashboard">
+          <div className="account-dashboard-header">
+            <div>
+              <h2>Dashboard de cuentas</h2>
+              <p>Distribución del dinero, saldos disponibles y actividad entre cuentas.</p>
+            </div>
+          </div>
+
+          <section className="kpis account-dashboard-kpis">
+            <KpiInfoCard
+              title="Patrimonio distribuido"
+              value={money(totalAccountBalance)}
+              detail="Suma de los saldos visibles de todas las cuentas"
+              icon={<WalletCards />}
+              tone="positive"
+              help="Suma el saldo actual mostrado en cada cuenta. Incluye el saldo de la cuenta principal y los ajustes realizados mediante transferencias."
+            />
+            <KpiInfoCard
+              title="Cuenta principal"
+              value={accountDashboardData[0]?.name || 'Sin cuentas'}
+              detail={accountDashboardData.length ? money(accountDashboardData[0]?.saldo || 0) : 'Sin saldo'}
+              icon={<TrendingUp />}
+              help="Identifica la cuenta que actualmente tiene el mayor saldo disponible."
+            />
+            <KpiInfoCard
+              title="Transferencias del mes"
+              value={String(currentMonthTransfers.length)}
+              detail={money(currentMonthTransfers.reduce((sum, item) => sum + item.amount, 0)) + ' movilizados'}
+              icon={<RefreshCw />}
+              help="Cuenta las transferencias realizadas durante el mes seleccionado y suma el dinero movilizado entre cuentas."
+            />
+            <KpiInfoCard
+              title="Saldo promedio por cuenta"
+              value={money(accounts.length ? totalAccountBalance / accounts.length : 0)}
+              detail={`${accounts.length} ${accounts.length === 1 ? 'cuenta activa' : 'cuentas activas'}`}
+              icon={<CircleDollarSign />}
+              help="Divide el dinero total distribuido por la cantidad de cuentas activas."
+            />
+          </section>
+
+          <div className="account-dashboard-grid">
+            <article className="panel account-dashboard-chart">
+              <div className="panel-title"><div><ChartInfoTitle title="Distribución del dinero por cuenta" text="Muestra qué proporción del dinero total se encuentra en cada cuenta." /><span>Participación de cada cuenta sobre el total</span></div></div>
+              <div className="account-chart-body">
+                <div className="chart account-pie-chart"><ResponsiveContainer><PieChart><Pie data={accountDashboardData.filter(item => item.saldo > 0)} dataKey="saldo" nameKey="name" innerRadius={62} outerRadius={92} paddingAngle={2}>{accountDashboardData.filter(item => item.saldo > 0).map((item, index) => <Cell key={item.id} fill={palette[index % palette.length]} />)}</Pie><Tooltip formatter={(value, name) => [money(value), name]} /></PieChart></ResponsiveContainer></div>
+                <div className="account-balance-legend">
+                  {accountDashboardData.map((item, index) => <div className="account-legend-row" key={item.id}><span className="legend-dot" style={{background:palette[index % palette.length]}}></span><b>{item.name}</b><strong>{money(item.saldo)}</strong><small>{totalAccountBalance > 0 ? `${((item.saldo / totalAccountBalance) * 100).toFixed(1)}%` : '0%'}</small></div>)}
+                  {!accountDashboardData.length && <div className="empty">Sin cuentas para mostrar.</div>}
+                </div>
+              </div>
+            </article>
+
+            <article className="panel account-dashboard-chart">
+              <div className="panel-title"><div><ChartInfoTitle title="Comparación de saldos" text="Compara visualmente el saldo actual de cada cuenta para identificar dónde está concentrado el dinero." /><span>Saldo actual por cuenta</span></div></div>
+              <div className="chart account-bar-chart"><ResponsiveContainer><BarChart data={accountDashboardData} layout="vertical" margin={{left:20,right:28,top:8,bottom:8}}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis type="number" stroke="#7890a8" tickFormatter={value => `$${Math.round(value / 1000)}k`}/><YAxis type="category" dataKey="name" width={110} stroke="#7890a8"/><Tooltip formatter={value => money(value)}/><Bar dataKey="saldo" name="Saldo" radius={[0,8,8,0]}>{accountDashboardData.map((item,index)=><Cell key={item.id} fill={palette[index % palette.length]}/>)}</Bar></BarChart></ResponsiveContainer></div>
+            </article>
+          </div>
+
+          <article className="panel account-transfer-history">
+            <div className="panel-title"><div><h3>Últimas transferencias</h3><span>Movimientos recientes entre cuentas</span></div></div>
+            <div className="account-transfer-table-wrap"><table><thead><tr><th>Fecha</th><th>Origen</th><th>Destino</th><th>Descripción</th><th className="right">Monto</th></tr></thead><tbody>
+              {transferHistory.slice(0, 8).map(item => <tr key={item.id}><td>{item.date?.split('-').reverse().join('/')}</td><td>{item.from}</td><td>{item.to}</td><td>{item.description}</td><td className="right positive"><b>{money(item.amount)}</b></td></tr>)}
+              {!transferHistory.length && <tr><td colSpan="5" className="empty">Todavía no existen transferencias entre cuentas.</td></tr>}
+            </tbody></table></div>
+          </article>
         </section>
 
         <section className="kpis account-summary-kpis">
