@@ -2691,84 +2691,66 @@ export default function App() {
       }
     `}</style>
     <style>{`
-      /* Corrección final: posición uniforme de ayuda e iconos en todas las tarjetas */
+      /* CORRECCIÓN DEFINITIVA: ayuda arriba derecha e icono abajo derecha */
       .kpi-info-card,
       .kpis article,
-      .top-insight-card,
-      .home-summary-cards .kpi-info-card {
+      .top-insight-card {
         position: relative !important;
-        overflow: visible !important;
-        padding-right: 62px !important;
+        overflow: hidden !important;
+        padding: 18px 58px 18px 18px !important;
       }
-
+      .kpi-info-card .kpi-info-head,
+      .kpis article .kpi-info-head,
+      .top-insight-card .kpi-info-head {
+        position: static !important;
+        display: block !important;
+      }
       .kpi-info-card .kpi-help,
-      .kpis article .card-help,
+      .kpi-info-card .card-help,
       .kpis article .kpi-help,
-      .top-insight-card .card-help,
+      .kpis article .card-help,
       .top-insight-card .kpi-help,
-      .home-summary-cards .kpi-help {
+      .top-insight-card .card-help {
         position: absolute !important;
         top: 14px !important;
         right: 14px !important;
         bottom: auto !important;
         left: auto !important;
+        margin: 0 !important;
+        transform: none !important;
         width: 24px !important;
         height: 24px !important;
         min-width: 24px !important;
-        min-height: 24px !important;
-        margin: 0 !important;
         padding: 0 !important;
-        transform: none !important;
-        z-index: 300 !important;
+        z-index: 20 !important;
       }
-
       .kpi-info-card .kpi-card-icon,
       .top-insight-card .kpi-card-icon,
-      .home-summary-cards .kpi-card-icon {
+      .kpis article > svg,
+      .top-insight-card > svg {
         position: absolute !important;
         right: 18px !important;
-        bottom: 18px !important;
+        bottom: 16px !important;
         top: auto !important;
         left: auto !important;
-        width: 32px !important;
-        height: 32px !important;
         margin: 0 !important;
-        padding: 0 !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
         transform: none !important;
-        pointer-events: none !important;
-        z-index: 2 !important;
-      }
-
-      .kpi-info-card .kpi-card-icon > svg,
-      .top-insight-card .kpi-card-icon > svg,
-      .home-summary-cards .kpi-card-icon > svg {
-        position: static !important;
         width: 28px !important;
         height: 28px !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        transform: none !important;
+        pointer-events: none !important;
       }
-
+      .kpi-info-card > strong,
       .kpi-info-card > small,
+      .kpis article > strong,
       .kpis article > small,
+      .top-insight-card > strong,
       .top-insight-card > small {
-        display: block !important;
-        padding-right: 36px !important;
+        max-width: calc(100% - 38px) !important;
       }
 
-      /* Metas de ahorro: márgenes limpios y acciones en una sola fila */
-      .goal-grid {
-        gap: 18px !important;
-        margin-top: 18px !important;
-      }
+      /* Metas: prioridad + subir + bajar + eliminar en una sola fila */
       .goal-card {
-        position: relative !important;
-        min-width: 0 !important;
-        padding: 20px !important;
+        padding: 18px !important;
         overflow: hidden !important;
       }
       .goal-card header {
@@ -2777,89 +2759,66 @@ export default function App() {
         align-items: start !important;
         gap: 16px !important;
         min-height: 0 !important;
-        margin: 0 0 16px !important;
-        padding: 0 0 16px !important;
+        padding: 0 0 14px !important;
+        margin: 0 0 14px !important;
         border-bottom: 1px solid #203852 !important;
-        overflow: visible !important;
       }
       .goal-card-main {
-        width: auto !important;
         min-width: 0 !important;
       }
       .goal-title-line {
-        display: flex !important;
-        align-items: center !important;
-        justify-content: flex-start !important;
-        gap: 9px !important;
-        flex-wrap: wrap !important;
-        min-width: 0 !important;
-        padding: 0 !important;
+        display: block !important;
+        width: 100% !important;
       }
       .goal-title-line h3 {
-        flex: 1 1 180px !important;
-        min-width: 0 !important;
-        margin: 0 !important;
-        line-height: 1.3 !important;
+        margin: 0 0 8px !important;
         white-space: normal !important;
-        overflow: visible !important;
-        text-overflow: clip !important;
-        word-break: break-word !important;
         overflow-wrap: anywhere !important;
-      }
-      .goal-priority {
-        flex: 0 0 auto !important;
       }
       .goal-target {
         display: flex !important;
         align-items: baseline !important;
         gap: 8px !important;
-        margin: 10px 0 0 !important;
-        min-width: 0 !important;
+        margin: 0 !important;
       }
       .goal-actions {
         position: static !important;
-        width: auto !important;
         display: flex !important;
         flex-direction: row !important;
         align-items: center !important;
         justify-content: flex-end !important;
-        gap: 7px !important;
+        gap: 8px !important;
+        width: auto !important;
+        min-width: max-content !important;
         margin: 0 !important;
-        z-index: auto !important;
+      }
+      .goal-priority {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        height: 30px !important;
+        padding: 0 10px !important;
+        white-space: nowrap !important;
       }
       .goal-actions button {
-        width: 34px !important;
-        height: 34px !important;
-        min-width: 34px !important;
-        min-height: 34px !important;
+        width: 30px !important;
+        height: 30px !important;
+        min-width: 30px !important;
         padding: 0 !important;
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
       }
-      .goal-progress-head,
-      .goal-progress,
-      .goal-stat-grid {
-        width: 100% !important;
-        margin-right: 0 !important;
-      }
-      .goal-progress-head { margin-top: 0 !important; }
-      .goal-progress { margin: 8px 0 16px !important; }
-      .goal-stat-grid { gap: 10px !important; }
-      .goal-stat-grid > div { padding: 12px !important; }
-
       @media (max-width: 720px) {
-        .goal-card { padding: 16px !important; }
         .goal-card header {
           grid-template-columns: 1fr !important;
           gap: 12px !important;
           padding-top: 0 !important;
-          min-height: 0 !important;
         }
         .goal-actions {
           justify-content: flex-start !important;
+          flex-wrap: wrap !important;
         }
-        .goal-stat-grid { grid-template-columns: 1fr !important; }
       }
     `}</style>
     <header><div className="brand"><div className="brand-icon"><WalletCards /></div><div><b>Mis Finanzas</b><small>Información sincronizada y siempre disponible</small></div></div><div className="header-actions"><button className={`ghost header-icon ${filtersOpen || Object.values(filters).some(v => v && v !== 'all') ? 'active' : ''}`} onClick={() => { setFilterDraft(filters); setFiltersOpen(true) }} title="Filtros"><SlidersHorizontal />{Object.values(filters).some(v => v && v !== 'all') && <span className="filter-dot" />}</button><button className={`ghost header-icon ${notificationsOpen ? 'active' : ''}`} onClick={() => setNotificationsOpen(true)} title="Notificaciones"><Bell />{notifications.length > 0 && <span className="notification-badge">{notifications.length}</span>}</button><button className="secondary" onClick={() => openNew('income')}><ArrowUpCircle /> Ingreso</button><button onClick={() => openNew('expense')}><ArrowDownCircle /> Egreso</button>{isMobileViewport && <button className="ghost mobile-quick-return" onClick={() => setMobileQuickMode(true)} title="Vista rápida"><Home /></button>}{configured && <button className="ghost" onClick={() => supabase.auth.signOut()} title="Cerrar sesión" aria-label="Cerrar sesión"><LogOut /></button>}</div></header>
@@ -3125,7 +3084,7 @@ export default function App() {
           <article className="visual-card"><div className="panel-title"><div><ChartInfoTitle title="Plan sugerido" text="Usa exactamente la misma capacidad mensual de ahorro mostrada en Análisis de finanzas, calculada con las categorías de ingresos y egresos seleccionadas."/></div></div><div className="insight-list"><div className="insight-row"><span>Capacidad mensual estimada</span><strong className={selectedSavingsCapacity>=0?'positive':'negative'}>{money(Math.max(selectedSavingsCapacity,0))}</strong></div><div className="insight-row"><span>Meses para completar todo</span><strong>{selectedSavingsCapacity>0 ? Math.ceil(allocatedSavingsGoals.reduce((s,g)=>s+g.remaining,0)/selectedSavingsCapacity) : '—'}</strong></div><div className="insight-row"><span>Meta prioritaria</span><strong>{allocatedSavingsGoals[0]?.name||'Sin meta'}</strong></div><div className="insight-row"><span>Progreso global</span><strong>{allocatedSavingsGoals.reduce((s,g)=>s+Number(g.target||0),0)>0 ? `${((allocatedSavingsGoals.reduce((s,g)=>s+g.allocated,0)/allocatedSavingsGoals.reduce((s,g)=>s+Number(g.target||0),0))*100).toFixed(1)}%` : '0%'}</strong></div></div></article>
         </div>
         <form className="category-form goals-form" onSubmit={saveSavingsGoal}><label className="grow">Nombre de la meta<input value={goalForm.name} onChange={e=>setGoalForm({...goalForm,name:e.target.value})} placeholder="Ej. Fondo de emergencia" required /></label><label>Monto objetivo<input type="number" min="0" step="0.01" value={goalForm.target} onChange={e=>setGoalForm({...goalForm,target:e.target.value})} placeholder="0,00" required /></label><label>Prioridad<input type="number" min="1" step="1" value={goalForm.priority} onChange={e=>setGoalForm({...goalForm,priority:e.target.value})} /></label><button type="submit"><Plus/> Agregar meta</button></form>
-        <div className="goal-grid">{allocatedSavingsGoals.map(goal=><article className={`goal-card ${goal.completed ? 'completed' : ''}`} key={goal.id}><header><div className="goal-card-main"><div className="goal-title-line"><h3>{goal.completed?'✓ ':''}{goal.name}</h3><span className="goal-priority">Prioridad {goal.priority}</span></div><div className="goal-target"><span>Objetivo</span><strong>{money(goal.target)}</strong></div></div><div className="goal-actions"><button className="ghost" type="button" onClick={()=>moveSavingsGoal(goal.id,-1)} aria-label="Subir prioridad">↑</button><button className="ghost" type="button" onClick={()=>moveSavingsGoal(goal.id,1)} aria-label="Bajar prioridad">↓</button><button className="ghost danger" type="button" onClick={()=>removeSavingsGoal(goal.id)} aria-label="Eliminar meta"><Trash2/></button></div></header><div className="goal-progress-head"><span>Progreso</span><strong>{goal.progress.toFixed(1)}%</strong></div><div className="goal-progress"><div style={{width:`${goal.progress}%`}}></div></div><div className="goal-stat-grid"><div><span>Asignado</span><b className="positive">{money(goal.allocated)}</b></div><div><span>Restante</span><b>{money(goal.remaining)}</b></div><div><span>Estado</span><b>{goal.completed?'Completada':'En progreso'}</b></div></div></article>)}{!allocatedSavingsGoals.length&&<><div className="empty-card">Todavía no existen metas de ahorro.</div><div className="goal-empty-advice"><article><b>Fondo de emergencia</b><span>Una primera meta útil es cubrir entre tres y seis meses de gastos habituales.</span></article><article><b>Objetivo concreto</b><span>Definir nombre, monto y prioridad facilita medir el progreso y mantener constancia.</span></article><article><b>Aporte mensual</b><span>Reservar una cantidad fija al cobrar ayuda a avanzar antes de realizar otros gastos.</span></article></div></>}</div>
+        <div className="goal-grid">{allocatedSavingsGoals.map(goal=><article className={`goal-card ${goal.completed ? 'completed' : ''}`} key={goal.id}><header><div className="goal-card-main"><div className="goal-title-line"><h3>{goal.completed?'✓ ':''}{goal.name}</h3></div><div className="goal-target"><span>Objetivo</span><strong>{money(goal.target)}</strong></div></div><div className="goal-actions"><span className="goal-priority">Prioridad {goal.priority}</span><button className="ghost" type="button" onClick={()=>moveSavingsGoal(goal.id,-1)} aria-label="Subir prioridad">↑</button><button className="ghost" type="button" onClick={()=>moveSavingsGoal(goal.id,1)} aria-label="Bajar prioridad">↓</button><button className="ghost danger" type="button" onClick={()=>removeSavingsGoal(goal.id)} aria-label="Eliminar meta"><Trash2/></button></div></header><div className="goal-progress-head"><span>Progreso</span><strong>{goal.progress.toFixed(1)}%</strong></div><div className="goal-progress"><div style={{width:`${goal.progress}%`}}></div></div><div className="goal-stat-grid"><div><span>Asignado</span><b className="positive">{money(goal.allocated)}</b></div><div><span>Restante</span><b>{money(goal.remaining)}</b></div><div><span>Estado</span><b>{goal.completed?'Completada':'En progreso'}</b></div></div></article>)}{!allocatedSavingsGoals.length&&<><div className="empty-card">Todavía no existen metas de ahorro.</div><div className="goal-empty-advice"><article><b>Fondo de emergencia</b><span>Una primera meta útil es cubrir entre tres y seis meses de gastos habituales.</span></article><article><b>Objetivo concreto</b><span>Definir nombre, monto y prioridad facilita medir el progreso y mantener constancia.</span></article><article><b>Aporte mensual</b><span>Reservar una cantidad fija al cobrar ayuda a avanzar antes de realizar otros gastos.</span></article></div></>}</div>
       </section>}
 
       {tab === 'analysis' && <>
@@ -3460,11 +3419,11 @@ export default function App() {
                 <div className="goal-card-main">
                   <div className="goal-title-line">
                     <h3>{goal.completed ? '✓ ' : ''}{goal.name}</h3>
-                    <span className="goal-priority">Prioridad {goal.priority}</span>
                   </div>
                   <div className="goal-target"><span>Objetivo</span><strong>{money(goal.target)}</strong></div>
                 </div>
                 <div className="goal-actions">
+                  <span className="goal-priority">Prioridad {goal.priority}</span>
                   <button className="ghost" type="button" onClick={() => moveSavingsGoal(goal.id, -1)} aria-label="Subir prioridad">↑</button>
                   <button className="ghost" type="button" onClick={() => moveSavingsGoal(goal.id, 1)} aria-label="Bajar prioridad">↓</button>
                   <button className="ghost danger" type="button" onClick={() => removeSavingsGoal(goal.id)} aria-label="Eliminar meta"><Trash2 /></button>
