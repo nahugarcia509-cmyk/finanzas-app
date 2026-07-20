@@ -434,16 +434,30 @@ export default function App() {
     setDataLoading(true)
     try {
       const currentUserId = session.user.id
-      await supabase.rpc('bootstrap_user')
 
-      const [a, c, m, settingsResult] = await Promise.all([
+      const fetchUserData = () => Promise.all([
         supabase.from('accounts').select('*').eq('user_id', currentUserId).order('name'),
         supabase.from('categories').select('*').eq('user_id', currentUserId).order('type').order('name'),
         supabase.from('transactions').select('*,accounts(name),categories(name)').eq('user_id', currentUserId).order('date', { ascending: false }),
         supabase.from('user_settings').select('opening_balance_month,opening_balance_amount,theme,background_theme,sidebar_open,selected_income_categories,selected_reserve_categories,savings_goals').eq('user_id', currentUserId).maybeSingle()
       ])
+
+      let [a, c, m, settingsResult] = await fetchUserData()
       if (a.error || c.error || m.error || settingsResult.error) {
         throw new Error(a.error?.message || c.error?.message || m.error?.message || settingsResult.error?.message)
+      }
+
+      // bootstrap_user se ejecuta únicamente para una cuenta realmente nueva.
+      // No se llama después de editar o eliminar cuentas, porque la función podía
+      // volver a crear la cuenta predeterminada "Billetera" por su nombre anterior.
+      const isBrandNewUser = !settingsResult.data && !(a.data || []).length && !(c.data || []).length
+      if (isBrandNewUser) {
+        const { error: bootstrapError } = await supabase.rpc('bootstrap_user')
+        if (bootstrapError) throw bootstrapError
+        ;[a, c, m, settingsResult] = await fetchUserData()
+        if (a.error || c.error || m.error || settingsResult.error) {
+          throw new Error(a.error?.message || c.error?.message || m.error?.message || settingsResult.error?.message)
+        }
       }
 
       const ownAccounts = (a.data || []).filter(row => row.user_id === currentUserId)
