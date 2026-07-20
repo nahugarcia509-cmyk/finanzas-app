@@ -1843,6 +1843,13 @@ export default function App() {
       .background-blue, .background-blue .app-shell, .background-blue .app-content, .background-blue main { background:#082f49 !important; }
       .background-plum, .background-plum .app-shell, .background-plum .app-content, .background-plum main { background:#24143d !important; }
       @media (max-width:700px) { .app > header { padding-right:66px !important; padding-left:10px !important; } .background-picker { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+      .accounts-page-heading { margin:0 0 14px; }
+      .accounts-page-heading h1 { margin:0 0 4px; }
+      .accounts-page-heading p { margin:0; color:#8aa7c7; }
+      .account-summary-kpis { grid-template-columns:repeat(3,minmax(0,1fr)) !important; margin-bottom:14px; }
+      .accounts-management-page { display:grid; gap:16px; }
+      .accounts-management-page .control-subpanel { margin:0; }
+      @media (max-width:900px) { .account-summary-kpis { grid-template-columns:1fr !important; } }
       .account-settings { max-width:760px; margin:0 auto; }
       .account-settings-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
       .account-settings label { display:flex; flex-direction:column; gap:8px; color:#9fb3c8; font-size:13px; }
@@ -2391,14 +2398,15 @@ export default function App() {
               <button className={tab === 'cargar' ? 'active' : ''} onClick={() => setTab('cargar')} title="Cargar movimientos"><Plus /><span className="nav-label">Cargar</span></button>
               <button className={tab === 'income' ? 'active' : ''} onClick={() => setTab('income')} title="Ingresos mensuales"><TrendingUp /><span className="nav-label">Ingresos</span></button>
               <button className={tab === 'expense' ? 'active' : ''} onClick={() => setTab('expense')} title="Egresos mensuales"><TrendingDown /><span className="nav-label">Egresos</span></button>
+              <button className={tab === 'big-expenses' ? 'active' : ''} onClick={() => setTab('big-expenses')} title="Grandes gastos"><ReceiptText /><span className="nav-label">Grandes gastos</span></button>
+              <button className={tab === 'savings' ? 'active' : ''} onClick={() => setTab('savings')} title="Ahorros"><PiggyBank /><span className="nav-label">Ahorros</span></button>
+              <button className={tab === 'account-management' ? 'active' : ''} onClick={() => setTab('account-management')} title="Gestión de cuentas"><WalletCards /><span className="nav-label">Gestión de cuentas</span></button>
             </div>}
           </div>
           <button className={tab === 'analysis' ? 'active' : ''} onClick={() => setTab('analysis')} title="Análisis de finanzas"><CircleDollarSign /><span className="nav-label">ANÁLISIS DE FINANZAS</span></button>
-          <button className={tab === 'big-expenses' ? 'active' : ''} onClick={() => setTab('big-expenses')} title="Grandes gastos"><ReceiptText /><span className="nav-label">GRANDES GASTOS</span></button>
-          <button className={tab === 'savings' ? 'active' : ''} onClick={() => setTab('savings')} title="Ahorros"><PiggyBank /><span className="nav-label">AHORROS</span></button>
+          <button className={tab === 'goals' ? 'active' : ''} onClick={() => setTab('goals')} title="Metas de ahorro"><Target /><span className="nav-label">METAS DE AHORRO</span></button>
           <button className={tab === 'calendar' ? 'active' : ''} onClick={() => setTab('calendar')} title="Calendario financiero"><CalendarDays /><span className="nav-label">CALENDARIO FINANCIERO</span></button>
           <button className={tab === 'compare' ? 'active' : ''} onClick={() => setTab('compare')} title="Comparar meses"><RefreshCw /><span className="nav-label">COMPARAR MESES</span></button>
-          <button className={tab === 'goals' ? 'active' : ''} onClick={() => setTab('goals')} title="Metas de ahorro"><Target /><span className="nav-label">METAS DE AHORRO</span></button>
           <button className={tab === 'control' ? 'active' : ''} onClick={() => setTab('control')} title="Control"><SlidersHorizontal /><span className="nav-label">CONTROL</span></button>
         </nav>
       </aside>
@@ -2408,7 +2416,7 @@ export default function App() {
       <div className="toolbar">
         {tab === 'analysis'
           ? <label>Período analizado <strong>{analysisMonths[0] || DATA_START} a {analysisMonths.at(-1) || DATA_START}</strong></label>
-          : tab === 'big-expenses' || tab === 'savings' || tab === 'settings' || tab === 'calendar' || tab === 'compare' || tab === 'goals' || tab === 'control'
+          : tab === 'big-expenses' || tab === 'savings' || tab === 'settings' || tab === 'calendar' || tab === 'compare' || tab === 'goals' || tab === 'control' || tab === 'account-management'
             ? <span></span>
             : <label>Período <input type="month" value={month} onChange={e => setMonth(e.target.value)} /></label>}
         {tab === 'dashboard' && <small className="period-note"><CalendarDays /> Todos los indicadores corresponden al mes seleccionado</small>}
@@ -3073,6 +3081,76 @@ export default function App() {
       {tab === 'income' && <TransactionsTable rows={incomeRows} title="Ingresos" type="income" search={search} setSearch={setSearch} onEdit={m => { setEditing(m); setNewType('income'); setModal(true) }} onDelete={remove} />}
       {tab === 'expense' && <TransactionsTable rows={expenseRows} title="Egresos" type="expense" search={search} setSearch={setSearch} onEdit={m => { setEditing(m); setNewType('expense'); setModal(true) }} onDelete={remove} />}
 
+      {tab === 'account-management' && <>
+        <section className="page-heading accounts-page-heading">
+          <div>
+            <h1>Gestión de cuentas</h1>
+            <p>Consultar, crear y organizar el dinero disponible en cada cuenta.</p>
+          </div>
+        </section>
+
+        <section className="kpis account-summary-kpis">
+          <KpiInfoCard
+            title="Dinero total en cuentas"
+            value={money(accounts.reduce((sum, account) => sum + accountBalance(account.id), 0))}
+            detail={`${accounts.length} ${accounts.length === 1 ? 'cuenta activa' : 'cuentas activas'}`}
+            icon={<WalletCards />}
+            tone="positive"
+            help="Suma el saldo visible de todas las cuentas, incluyendo las transferencias recibidas y descontando las transferencias enviadas."
+          />
+          <KpiInfoCard
+            title="Cuenta con mayor saldo"
+            value={accounts.length ? money(Math.max(...accounts.map(account => accountBalance(account.id)))) : money(0)}
+            detail={accounts.length ? [...accounts].sort((a,b) => accountBalance(b.id) - accountBalance(a.id))[0]?.name : 'Sin cuentas'}
+            icon={<TrendingUp />}
+            help="Muestra la cuenta que actualmente concentra el mayor saldo disponible."
+          />
+          <KpiInfoCard
+            title="Saldo en ahorros"
+            value={money(savingsBalance)}
+            detail="Fondo acumulado"
+            icon={<PiggyBank />}
+            tone="info"
+            help="Indica el saldo total acumulado en Ahorros. Este monto se administra desde la pestaña Ahorros."
+          />
+        </section>
+
+        <section className="panel accounts-management-page">
+          <div className="control-subpanel account-management">
+            <div className="control-subpanel-title"><WalletCards /><div><h3>Cuentas</h3><span>Crear, editar y eliminar cuentas. El saldo se carga y modifica manualmente.</span></div></div>
+            <form className="account-management-form" onSubmit={saveAccountRecord}>
+              <label>Nombre de la cuenta<input value={accountForm.name} onChange={e => setAccountForm(current => ({ ...current, name: e.target.value }))} placeholder="Ej. Banco o efectivo" /></label>
+              <label>Saldo inicial<input type="number" step="0.01" value={accountForm.initial_balance} onChange={e => setAccountForm(current => ({ ...current, initial_balance: e.target.value }))} placeholder="0,00" /></label>
+              <button type="submit">{editingAccountId ? <><Pencil /> Guardar edición</> : <><Plus /> Crear cuenta</>}</button>
+              {editingAccountId && <button type="button" className="ghost" onClick={resetAccountForm}>Cancelar</button>}
+            </form>
+            <div className="account-cards-grid">
+              {accounts.map(account => <article className="account-card" key={account.id}>
+                <div><b>{account.name}</b><small>Saldo actual</small></div>
+                <strong>{money(accountBalance(account.id))}</strong>
+                <div className="row-actions">
+                  <button type="button" className="ghost" onClick={() => startEditingAccount(account)}><Pencil /></button>
+                  <button type="button" className="ghost danger" onClick={() => removeAccount(account)}><Trash2 /></button>
+                </div>
+              </article>)}
+              {!accounts.length && <div className="empty-card">Todavía no existen cuentas.</div>}
+            </div>
+          </div>
+
+          <form className="control-subpanel" onSubmit={saveTransfer}>
+            <div className="control-subpanel-title"><RefreshCw /><div><h3>Transferencia entre cuentas</h3><span>Mueve dinero sin modificar ingresos, egresos ni resultados mensuales.</span></div></div>
+            <div className="transfer-grid">
+              <label>Desde<select value={transferForm.from_account_id} onChange={e => setTransferForm(current => ({ ...current, from_account_id: e.target.value }))}>{accounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
+              <label>Hacia<select value={transferForm.to_account_id} onChange={e => setTransferForm(current => ({ ...current, to_account_id: e.target.value }))}>{accounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
+              <label>Monto<input type="number" min="0" step="0.01" value={transferForm.amount} onChange={e => setTransferForm(current => ({ ...current, amount: e.target.value }))} placeholder="0,00" /></label>
+              <label>Fecha<input type="date" value={transferForm.date} onChange={e => setTransferForm(current => ({ ...current, date: e.target.value }))} /></label>
+              <label className="transfer-description">Descripción<input value={transferForm.description} onChange={e => setTransferForm(current => ({ ...current, description: e.target.value }))} placeholder="Opcional" /></label>
+              <button type="submit" disabled={accounts.length < 2}><RefreshCw /> Transferir</button>
+            </div>
+          </form>
+        </section>
+      </>}
+
       {tab === 'settings' && <section className="panel account-settings">
         <div className="panel-title">
           <div><h3>Configuración de cuenta</h3><span>Administrar los datos de acceso y la sesión actual</span></div>
@@ -3109,7 +3187,7 @@ export default function App() {
       {tab === 'control' && <section className="panel control-card">
         <div className="section-icon"><FolderCog /></div>
         <h2>Control y personalización</h2>
-        <p>Administrar configuración financiera, cuentas, transferencias, categorías y apariencia.</p>
+        <p>Administrar configuración financiera, categorías y apariencia.</p>
 
         <div className="control-sections-grid">
           <form className="control-subpanel" onSubmit={saveFinancialSettings}>
@@ -3126,39 +3204,6 @@ export default function App() {
             <button type="submit"><Settings2 /> Guardar saldo inicial</button>
           </form>
         </div>
-
-        <div className="control-subpanel account-management">
-          <div className="control-subpanel-title"><WalletCards /><div><h3>Cuentas</h3><span>Crear, editar y eliminar cuentas. El saldo se carga y modifica manualmente</span></div></div>
-          <form className="account-management-form" onSubmit={saveAccountRecord}>
-            <label>Nombre de la cuenta<input value={accountForm.name} onChange={e => setAccountForm(current => ({ ...current, name: e.target.value }))} placeholder="Ej. Banco o efectivo" /></label>
-            <label>Saldo inicial<input type="number" step="0.01" value={accountForm.initial_balance} onChange={e => setAccountForm(current => ({ ...current, initial_balance: e.target.value }))} placeholder="0,00" /></label>
-            <button type="submit">{editingAccountId ? <><Pencil /> Guardar edición</> : <><Plus /> Crear cuenta</>}</button>
-            {editingAccountId && <button type="button" className="ghost" onClick={resetAccountForm}>Cancelar</button>}
-          </form>
-          <div className="account-cards-grid">
-            {accounts.map(account => <article className="account-card" key={account.id}>
-              <div><b>{account.name}</b><small>Saldo manual</small></div>
-              <strong>{money(accountBalance(account.id))}</strong>
-              <div className="row-actions">
-                <button type="button" className="ghost" onClick={() => startEditingAccount(account)}><Pencil /></button>
-                <button type="button" className="ghost danger" onClick={() => removeAccount(account)}><Trash2 /></button>
-              </div>
-            </article>)}
-            {!accounts.length && <div className="empty-card">Todavía no existen cuentas.</div>}
-          </div>
-        </div>
-
-        <form className="control-subpanel" onSubmit={saveTransfer}>
-          <div className="control-subpanel-title"><RefreshCw /><div><h3>Transferencia entre cuentas</h3><span>Mueve dinero sin modificar ingresos, egresos ni resultados mensuales</span></div></div>
-          <div className="transfer-grid">
-            <label>Desde<select value={transferForm.from_account_id} onChange={e => setTransferForm(current => ({ ...current, from_account_id: e.target.value }))}>{accounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
-            <label>Hacia<select value={transferForm.to_account_id} onChange={e => setTransferForm(current => ({ ...current, to_account_id: e.target.value }))}>{accounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
-            <label>Monto<input type="number" min="0" step="0.01" value={transferForm.amount} onChange={e => setTransferForm(current => ({ ...current, amount: e.target.value }))} placeholder="0,00" /></label>
-            <label>Fecha<input type="date" value={transferForm.date} onChange={e => setTransferForm(current => ({ ...current, date: e.target.value }))} /></label>
-            <label className="transfer-description">Descripción<input value={transferForm.description} onChange={e => setTransferForm(current => ({ ...current, description: e.target.value }))} placeholder="Opcional" /></label>
-            <button type="submit" disabled={accounts.length < 2}><RefreshCw /> Transferir</button>
-          </div>
-        </form>
 
         <div className="theme-section">
           <div className="theme-block">
