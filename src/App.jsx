@@ -22,6 +22,7 @@ const demoAccounts = [
 const initialDemoCategories = seedCategories.map((c, i) => ({ ...c, id: `seed-cat-${i}` }))
 const palette = ['#38bdf8', '#4ade80', '#f59e0b', '#fb7185', '#a78bfa', '#22d3ee', '#f97316', '#e879f9', '#84cc16', '#facc15']
 
+const OWNER_EMAIL = 'nahu.garcia.509@gmail.com'
 const SAVINGS_DEPOSIT = '[SAVINGS_DEPOSIT]'
 const SAVINGS_WITHDRAWAL = '[SAVINGS_WITHDRAWAL]'
 
@@ -76,7 +77,70 @@ function CategoryBreakdown({ title, rows, type }) {
     <div className="panel-title"><div><h3>{title}</h3><span>{grouped.length} categorías · {rows.length} movimientos</span></div></div>
     <div className="category-table-grid">
       {grouped.map(group => <article className={`category-detail-card ${type}`} key={group.name}>
-        <header><b>{group.name}</b><strong>{money(group.total)}</strong></header>
+    
+    <style>{`
+      /* Formato único para todas las cards KPI */
+      .kpi-info-card,
+      .kpis article,
+      .top-insight-card {
+        position: relative !important;
+        min-height: 118px !important;
+        padding: 18px 56px 18px 18px !important;
+        overflow: visible !important;
+      }
+      .kpi-info-head { display:block !important; padding-right:0 !important; }
+      .kpi-info-card .kpi-help,
+      .kpis article .card-help,
+      .kpis article .kpi-help,
+      .top-insight-card .kpi-help {
+        position:absolute !important;
+        top:14px !important;
+        right:14px !important;
+        bottom:auto !important;
+        left:auto !important;
+        margin:0 !important;
+        transform:none !important;
+      }
+      .kpi-info-card .kpi-card-icon,
+      .kpis article > svg,
+      .top-insight-card > svg,
+      .top-insight-card .kpi-card-icon {
+        position:absolute !important;
+        right:18px !important;
+        bottom:16px !important;
+        top:auto !important;
+        left:auto !important;
+        width:28px !important;
+        height:28px !important;
+        display:flex !important;
+        align-items:center !important;
+        justify-content:center !important;
+        margin:0 !important;
+        padding:0 !important;
+        color:#7394b8 !important;
+        opacity:.95 !important;
+        pointer-events:none !important;
+        transform:none !important;
+      }
+      .kpi-info-card .kpi-card-icon > svg,
+      .top-insight-card .kpi-card-icon > svg {
+        width:28px !important;
+        height:28px !important;
+        position:static !important;
+        margin:0 !important;
+        transform:none !important;
+      }
+      .kpi-info-card > small,
+      .kpis article > small,
+      .top-insight-card > small { padding-right:34px !important; }
+      .kpi-info-card > strong,
+      .kpis article > strong,
+      .top-insight-card > strong { display:block; padding-right:8px; }
+      /* Evita signos de ayuda duplicados creados por reglas antiguas */
+      article[data-help]::before,
+      article[data-help]::after { display:none !important; content:none !important; }
+    `}</style>
+    <header><b>{group.name}</b><strong>{money(group.total)}</strong></header>
         <div className="category-detail-body">
           {group.items.sort((a,b)=>a.date.localeCompare(b.date)).map(item => <div className="concept-row" key={item.id}>
             <div><span>{item.description}</span><small>{item.date?.split('-').reverse().join('/')}</small></div>
@@ -105,11 +169,33 @@ function GeneralBalanceTable({ openingBalance, incomeByCategory, expenseByCatego
 function ChartInfoTitle({ title, text }) {
   return <div className="chart-title-row">
     <h3>{title}</h3>
-    <button type="button" className="chart-help" aria-label={`Explicación de ${title}`} title="Ver explicación">
+    <button type="button" className="chart-help" aria-label={`Explicación de ${title}`}>
       <HelpCircle />
       <span className="chart-help-tooltip">{text}</span>
     </button>
   </div>
+}
+
+function CardHelp({ text, label = 'Ver explicación' }) {
+  return <button type="button" className="card-help" aria-label={label}>
+    <HelpCircle />
+    <span className="card-help-tooltip">{text}</span>
+  </button>
+}
+
+function KpiInfoCard({ title, value, detail, icon, tone = '', help }) {
+  return <article className={`kpi-info-card ${tone}`}>
+    <div className="kpi-info-head">
+      <span>{title}</span>
+      <button type="button" className="kpi-help" aria-label={`Explicación de ${title}`}>
+        <HelpCircle />
+        <span className="kpi-help-tooltip">{help}</span>
+      </button>
+    </div>
+    <strong className={tone}>{value}</strong>
+    <span className="kpi-card-icon">{icon}</span>
+    <small>{detail}</small>
+  </article>
 }
 
 export default function App() {
@@ -138,6 +224,7 @@ export default function App() {
     return `${m === 1 ? y-1 : y}-${String(m === 1 ? 12 : m-1).padStart(2,'0')}`
   })
   const [theme, setTheme] = useState(() => localStorage.getItem('finance_theme') || 'blue')
+  const [backgroundTheme, setBackgroundTheme] = useState(() => localStorage.getItem('finance_background_theme') || 'navy')
   const [selectedReserveCategories, setSelectedReserveCategories] = useState(() => {
     try {
       const saved = localStorage.getItem('finance_selected_reserve_categories')
@@ -208,7 +295,14 @@ export default function App() {
     return () => subscription.unsubscribe()
   }, [])
 
-  useEffect(() => { if (session) loadAll() }, [session])
+  useEffect(() => {
+    setAccounts([])
+    setCategories([])
+    setMovements([])
+    setSearch('')
+    setNotice('')
+    if (session?.user?.id) loadAll()
+  }, [session?.user?.id])
 
   useEffect(() => {
     if (!session?.user) return
@@ -223,6 +317,11 @@ export default function App() {
     localStorage.setItem('finance_theme', theme)
     document.documentElement.dataset.financeTheme = theme
   }, [theme])
+
+  useEffect(() => {
+    localStorage.setItem('finance_background_theme', backgroundTheme)
+    document.documentElement.dataset.financeBackground = backgroundTheme
+  }, [backgroundTheme])
 
   useEffect(() => {
     const onKey = (e) => {
@@ -283,18 +382,55 @@ export default function App() {
     if (!session?.user?.id) return
     setLoading(true)
     try {
+      const currentUserId = session.user.id
+      const currentEmail = String(session.user.email || '').trim().toLowerCase()
+
       await supabase.rpc('bootstrap_user')
-      let [a, c, m] = await Promise.all([
-        supabase.from('accounts').select('*').eq('user_id', session.user.id).order('name'),
-        supabase.from('categories').select('*').eq('user_id', session.user.id).order('type').order('name'),
-        supabase.from('transactions').select('*,accounts(name),categories(name)').eq('user_id', session.user.id).order('date', { ascending: false })
+
+      // Limpieza única de cargas heredadas que pudieron copiarse a usuarios secundarios.
+      // No vuelve a ejecutarse después de que el usuario empieza a cargar sus propios datos.
+      if (currentEmail !== OWNER_EMAIL) {
+        const cleanupKey = `finance_clean_user_${currentUserId}`
+        if (!localStorage.getItem(cleanupKey)) {
+          const { error: cleanupError } = await supabase
+            .from('transactions')
+            .delete()
+            .eq('user_id', currentUserId)
+          if (cleanupError) throw cleanupError
+          localStorage.setItem(cleanupKey, '1')
+          localStorage.removeItem('finance_savings_goals')
+          localStorage.removeItem('finance_selected_reserve_categories')
+          localStorage.removeItem('finance_selected_income_categories')
+          setSavingsGoals([])
+          setSelectedReserveCategories(null)
+          setSelectedIncomeCategories(null)
+        }
+      }
+
+      const [a, c, m] = await Promise.all([
+        supabase.from('accounts').select('*').eq('user_id', currentUserId).order('name'),
+        supabase.from('categories').select('*').eq('user_id', currentUserId).order('type').order('name'),
+        supabase.from('transactions').select('*,accounts(name),categories(name)').eq('user_id', currentUserId).order('date', { ascending: false })
       ])
       if (a.error || c.error || m.error) throw new Error(a.error?.message || c.error?.message || m.error?.message)
-      setAccounts(a.data || [])
-      setCategories(c.data || [])
-      setMovements(m.data || [])
-    } catch (e) { setNotice(e.message || String(e)) }
-    finally { setLoading(false) }
+
+      // Segunda barrera del lado de la interfaz: jamás renderizar filas de otro usuario,
+      // aun si una política de Supabase estuviera configurada incorrectamente.
+      const ownAccounts = (a.data || []).filter(row => row.user_id === currentUserId)
+      const ownCategories = (c.data || []).filter(row => row.user_id === currentUserId)
+      const ownMovements = (m.data || []).filter(row => row.user_id === currentUserId)
+
+      setAccounts(ownAccounts)
+      setCategories(ownCategories)
+      setMovements(ownMovements)
+    } catch (e) {
+      setAccounts([])
+      setCategories([])
+      setMovements([])
+      setNotice(e.message || String(e))
+    } finally {
+      setLoading(false)
+    }
   }
 
   const openNew = (type) => { setEditing(null); setNewType(type); setModal(true) }
@@ -945,7 +1081,7 @@ export default function App() {
   if (loading) return <div className="center"><RefreshCw className="spin" /> Cargando finanzas…</div>
   if (configured && !session) return <Auth supabase={supabase} />
 
-  return <div className={`app theme-${theme}`}>
+  return <div className={`app theme-${theme} background-${backgroundTheme}`}>
     <style>{`
       .kpis.extended article[title] { cursor: help; position: relative; }
       .kpis.extended article[title]:hover { transform: translateY(-2px); transition: transform .15s ease; }
@@ -1018,10 +1154,38 @@ export default function App() {
       .chart-help { position:relative; display:inline-flex; align-items:center; justify-content:center; color:#8fb0d3; cursor:help; outline:none; border:0; background:transparent; padding:0; min-width:20px; overflow:visible; }
       .chart-help > svg { width:18px; height:18px; }
       .chart-help-tooltip { position:absolute; z-index:1000; left:50%; top:calc(100% + 10px); transform:translateX(-50%); width:min(330px,72vw); padding:12px 14px; border-radius:10px; border:1px solid #3a5878; background:#071524; color:#e8f2ff; font-size:12px; line-height:1.5; box-shadow:0 12px 35px rgba(0,0,0,.45); opacity:0; visibility:hidden; pointer-events:none; transition:opacity .15s ease, visibility .15s ease; }
-      .chart-help:hover .chart-help-tooltip, .chart-help:focus .chart-help-tooltip, .chart-help:focus-visible .chart-help-tooltip { opacity:1; visibility:visible; }
+      .chart-help:hover .chart-help-tooltip { opacity:1; visibility:visible; }
       .home-grid .panel, .home-grid .panel-title, .chart-title-row { overflow:visible !important; }
       .chart-help-tooltip::before { content:''; position:absolute; top:-6px; left:50%; width:10px; height:10px; background:#071524; border-left:1px solid #3a5878; border-top:1px solid #3a5878; transform:translateX(-50%) rotate(45deg); }
       @media (max-width:850px) { .side-nav { position:fixed; left:0; top:76px; bottom:0; z-index:9990; box-shadow:12px 0 30px rgba(0,0,0,.35); } .side-nav.collapsed { width:68px; flex-basis:68px; } .app-shell { padding-left:68px; } }
+
+      /* Encabezado alineado a los extremos y controles con estilo de la app */
+      .app > header { width:100%; max-width:none !important; margin:0 !important; padding:10px 82px 10px 18px !important; display:flex !important; justify-content:space-between !important; align-items:center !important; gap:18px; }
+      .app > header .brand { margin:0 !important; flex:0 0 auto; }
+      .app > header .header-actions { margin-left:auto !important; padding-right:0 !important; display:flex; align-items:center; gap:8px; }
+      .app input, .app select, .app textarea { background:#0b1b2f !important; color:#eaf4ff !important; border:1px solid #294866 !important; border-radius:9px !important; outline:none; min-height:40px; padding:8px 12px; }
+      .app input:focus, .app select:focus, .app textarea:focus { border-color:var(--accent,#38bdf8) !important; box-shadow:0 0 0 3px color-mix(in srgb, var(--accent,#38bdf8) 18%, transparent); }
+      .app select option { background:#0b1b2f; color:#eaf4ff; }
+      .app input[type="month"], .app input[type="date"] { color-scheme:dark; min-width:165px; }
+      .app input[type="month"]::-webkit-calendar-picker-indicator, .app input[type="date"]::-webkit-calendar-picker-indicator { filter:invert(88%) sepia(12%) saturate(540%) hue-rotate(170deg); cursor:pointer; }
+      .theme-section { display:grid; gap:18px; margin:0 0 24px; padding:18px; border:1px solid #29405c; border-radius:14px; background:#0c1b2f; }
+      .theme-block h4 { margin:0 0 6px; }
+      .theme-block p { margin:0 0 12px; color:#8aa7c7; font-size:13px; }
+      .background-picker { display:grid; grid-template-columns:repeat(5,minmax(86px,1fr)); gap:10px; }
+      .background-option { min-height:62px; border-radius:12px !important; border:2px solid transparent !important; position:relative; overflow:hidden; }
+      .background-option.active { border-color:#fff !important; box-shadow:0 0 0 3px rgba(56,189,248,.25); }
+      .background-option span { position:absolute; left:8px; bottom:6px; font-size:11px; font-weight:800; color:#fff; text-shadow:0 1px 3px #000; }
+      .background-navy-btn { background:#071524 !important; }
+      .background-slate-btn { background:#111827 !important; }
+      .background-black-btn { background:#030712 !important; }
+      .background-blue-btn { background:#082f49 !important; }
+      .background-plum-btn { background:#24143d !important; }
+      .background-navy, .background-navy .app-shell, .background-navy .app-content, .background-navy main { background:#071524 !important; }
+      .background-slate, .background-slate .app-shell, .background-slate .app-content, .background-slate main { background:#111827 !important; }
+      .background-black, .background-black .app-shell, .background-black .app-content, .background-black main { background:#030712 !important; }
+      .background-blue, .background-blue .app-shell, .background-blue .app-content, .background-blue main { background:#082f49 !important; }
+      .background-plum, .background-plum .app-shell, .background-plum .app-content, .background-plum main { background:#24143d !important; }
+      @media (max-width:700px) { .app > header { padding-right:66px !important; padding-left:10px !important; } .background-picker { grid-template-columns:repeat(2,minmax(0,1fr)); } }
       .account-settings { max-width:760px; margin:0 auto; }
       .account-settings-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
       .account-settings label { display:flex; flex-direction:column; gap:8px; color:#9fb3c8; font-size:13px; }
@@ -1040,6 +1204,30 @@ export default function App() {
       .floating-settings-button.active { background:#ffffff !important; color:#0c1b2f !important; }
       header .header-actions { padding-right:70px; }
       @media (max-width:700px) { .floating-settings-button { top:12px; right:12px; width:46px; height:46px; min-width:46px; } header .header-actions { padding-right:58px; } }
+      /* Sistema unificado de ayuda e iconos */
+      .kpi-info-card, .kpis article { position:relative !important; overflow:visible !important; padding:18px 52px 18px 18px !important; min-height:116px; }
+      .kpi-info-head { display:block !important; padding-right:0 !important; min-height:auto !important; }
+      .kpi-help, .card-help { position:absolute !important; top:12px !important; right:12px !important; z-index:80 !important; width:22px !important; height:22px !important; min-width:22px !important; padding:0 !important; border:1px solid #54789d !important; border-radius:50% !important; background:#102844 !important; color:#b9d6f2 !important; display:flex !important; align-items:center !important; justify-content:center !important; cursor:help !important; box-shadow:none !important; }
+      .kpi-help > svg, .card-help > svg { width:14px !important; height:14px !important; flex:0 0 14px !important; }
+      .kpi-card-icon { position:absolute !important; right:16px !important; bottom:14px !important; top:auto !important; width:28px !important; height:28px !important; display:flex !important; align-items:center !important; justify-content:center !important; color:#6f91b4 !important; opacity:.95; pointer-events:none; }
+      .kpi-card-icon > svg { width:25px !important; height:25px !important; }
+      .kpis article > svg { position:absolute !important; right:16px !important; bottom:14px !important; top:auto !important; width:25px !important; height:25px !important; color:#6f91b4 !important; opacity:.95; pointer-events:none; }
+      .kpi-info-card.positive { border-color:rgba(74,222,128,.48) !important; }
+      .kpi-info-card.negative { border-color:rgba(251,113,133,.48) !important; }
+      .home-kpis .kpi-info-card:nth-child(1){border-color:rgba(74,222,128,.55)!important;background:linear-gradient(145deg,rgba(74,222,128,.055),rgba(13,28,48,.96))}
+      .home-kpis .kpi-info-card:nth-child(2){border-color:rgba(251,113,133,.55)!important;background:linear-gradient(145deg,rgba(251,113,133,.055),rgba(13,28,48,.96))}
+      .home-kpis .kpi-info-card:nth-child(3){border-color:rgba(56,189,248,.55)!important;background:linear-gradient(145deg,rgba(56,189,248,.055),rgba(13,28,48,.96))}
+      .home-kpis .kpi-info-card:nth-child(4){border-color:rgba(167,139,250,.55)!important;background:linear-gradient(145deg,rgba(167,139,250,.055),rgba(13,28,48,.96))}
+      .home-kpis .kpi-info-card:nth-child(5){border-color:rgba(245,158,11,.55)!important;background:linear-gradient(145deg,rgba(245,158,11,.055),rgba(13,28,48,.96))}
+      .kpi-help-tooltip, .card-help-tooltip { position:absolute !important; z-index:999999 !important; top:calc(100% + 9px) !important; right:0 !important; left:auto !important; transform:none !important; width:min(320px,76vw) !important; padding:12px 14px !important; border:1px solid #426486 !important; border-radius:11px !important; background:#071524 !important; color:#eef7ff !important; font-size:12px !important; font-weight:500 !important; line-height:1.5 !important; text-align:left !important; white-space:normal !important; box-shadow:0 16px 42px rgba(0,0,0,.62) !important; opacity:0 !important; visibility:hidden !important; pointer-events:none !important; transition:opacity .15s ease,visibility .15s ease,transform .15s ease !important; }
+      .kpi-help:hover .kpi-help-tooltip, .card-help:hover .card-help-tooltip { opacity:1 !important; visibility:visible !important; }
+      .kpi-help:focus .kpi-help-tooltip, .card-help:focus .card-help-tooltip, .kpi-help:focus-visible .kpi-help-tooltip, .card-help:focus-visible .card-help-tooltip { opacity:0 !important; visibility:hidden !important; }
+      article[data-help]::before, article[data-help]::after { display:none !important; content:none !important; }
+      .chart-help-tooltip { right:auto; left:50%; }
+      .chart-help:focus .chart-help-tooltip, .chart-help:focus-visible .chart-help-tooltip { opacity:0 !important; visibility:hidden !important; }
+      .panel > .card-help { top:14px !important; right:14px !important; }
+      .panel-title:has(.chart-help) { padding-right:0 !important; }
+
       @media (max-width:1100px) {
         .compact-kpis { grid-template-columns:repeat(3,minmax(0,1fr)) !important; }
         .dashboard-wide-grid { grid-template-columns:repeat(2,minmax(0,1fr)) !important; }
@@ -1101,10 +1289,176 @@ export default function App() {
       .entry-card .category-form input,.entry-card .category-form select { width:100%;min-width:0; }
       .entry-card .category-form button { white-space:normal;min-height:42px;justify-content:center; }
       .home-grid>.panel:nth-child(1){border-top:3px solid #38bdf8}.home-grid>.panel:nth-child(2){border-top:3px solid #4ade80}.home-grid>.panel:nth-child(3){border-top:3px solid #f59e0b}.home-grid>.panel:nth-child(4){border-top:3px solid #a78bfa}.home-grid>.panel:nth-child(5){border-top:3px solid #fb7185}.home-grid>.panel:nth-child(6){border-top:3px solid #22d3ee}
+
+      .home-kpis { overflow:visible !important; position:relative; z-index:20; }
+      .home-kpis .kpi-info-card { position:relative; overflow:visible !important; isolation:visible; }
+      .kpi-info-head { display:flex; align-items:center; justify-content:space-between; gap:8px; min-width:0; }
+      .kpi-info-head > span { min-width:0; }
+      .kpi-help { position:relative; z-index:40; width:24px; height:24px; min-width:24px; padding:0 !important; border:0 !important; border-radius:50%; display:grid; place-items:center; background:#17304c !important; color:#a9c7e8 !important; cursor:help; overflow:visible !important; }
+      .kpi-help:hover, .kpi-help:focus-visible { background:#38bdf8 !important; color:#06111f !important; outline:none; }
+      .kpi-help svg { width:16px; height:16px; }
+      .kpi-help-tooltip { position:absolute; z-index:999999; top:calc(100% + 10px); right:0; width:min(310px,75vw); padding:12px 14px; border:1px solid #3e6288; border-radius:11px; background:#061525; color:#eef7ff; font-size:12px; line-height:1.5; text-align:left; font-weight:500; box-shadow:0 16px 40px rgba(0,0,0,.55); opacity:0; visibility:hidden; transform:translateY(-4px); pointer-events:none; transition:.15s ease; white-space:normal; }
+      .kpi-help:hover .kpi-help-tooltip, .kpi-help:focus .kpi-help-tooltip, .kpi-help:focus-visible .kpi-help-tooltip { opacity:1; visibility:visible; transform:translateY(0); }
+      .kpi-help-tooltip::before { content:''; position:absolute; top:-6px; right:7px; width:10px; height:10px; background:#061525; border-left:1px solid #3e6288; border-top:1px solid #3e6288; transform:rotate(45deg); }
+      .kpi-card-icon { position:absolute; right:14px; bottom:14px; color:#6f8eaf; opacity:.8; }
+      .kpi-card-icon svg { width:22px; height:22px; }
+      .savings-entry-section { display:block !important; width:100% !important; }
+      .savings-entry-card { width:100% !important; max-width:none !important; min-width:0 !important; }
+      .savings-entry-card .category-form { grid-template-columns:minmax(170px,.9fr) minmax(170px,.9fr) minmax(180px,1fr) minmax(240px,1.5fr) minmax(170px,auto) !important; width:100% !important; }
+      .savings-entry-card .category-form button { width:100%; min-width:170px; }
+      /* Ayuda unificada para todas las tarjetas y gráficos */
+      .kpi-info-card { position:relative !important; overflow:visible !important; padding-top:18px !important; }
+      .kpi-info-head { position:relative; padding-right:34px; min-height:24px; }
+      .kpi-help { position:absolute !important; top:0 !important; right:0 !important; width:22px !important; height:22px !important; min-width:22px !important; border:1px solid #52779d !important; background:#102844 !important; color:#b9d6f2 !important; border-radius:50% !important; padding:0 !important; display:flex !important; align-items:center !important; justify-content:center !important; line-height:1 !important; overflow:visible !important; }
+      .kpi-help > svg { position:static !important; inset:auto !important; transform:none !important; margin:0 !important; width:14px !important; height:14px !important; opacity:1 !important; }
+      .chart-help { width:22px !important; height:22px !important; min-width:22px !important; border:1px solid #52779d !important; background:#102844 !important; border-radius:50% !important; }
+      .chart-help > svg { position:static !important; transform:none !important; width:14px !important; height:14px !important; }
+      .chart-help-tooltip,.kpi-help-tooltip { background:#071524 !important; color:#eef7ff !important; border:1px solid #426486 !important; box-shadow:0 16px 42px rgba(0,0,0,.62) !important; }
+      article[data-help] { position:relative !important; overflow:visible !important; }
+      article[data-help]::before { content:'?'; position:absolute; top:12px; right:12px; z-index:45; width:22px; height:22px; display:flex; align-items:center; justify-content:center; border:1px solid #52779d; border-radius:50%; background:#102844; color:#b9d6f2; font-size:13px; font-weight:800; line-height:1; cursor:help; }
+      article[data-help]::after { content:attr(data-help); position:absolute; top:42px; right:12px; z-index:999999; width:min(320px,76vw); padding:12px 14px; border:1px solid #426486; border-radius:11px; background:#071524; color:#eef7ff; font-size:12px; font-weight:500; line-height:1.5; text-align:left; white-space:normal; box-shadow:0 16px 42px rgba(0,0,0,.62); opacity:0; visibility:hidden; transform:translateY(-4px); pointer-events:none; transition:opacity .15s ease,visibility .15s ease,transform .15s ease; }
+      article[data-help]:hover::after, article[data-help]:focus-within::after { opacity:1; visibility:visible; transform:translateY(0); }
+      article[data-help] > span:first-child, article[data-help] .panel-title { padding-right:30px; }
+      /* Evita el tooltip blanco nativo en elementos de ayuda */
+      .chart-help[title],.kpi-help[title],article[data-help][title] { pointer-events:auto; }
+      @media(max-width:1350px){.savings-entry-card .category-form{grid-template-columns:repeat(2,minmax(0,1fr)) !important}.savings-entry-card .category-form button{grid-column:1/-1;min-width:0}}
+      @media(max-width:700px){.savings-entry-card .category-form{grid-template-columns:1fr !important}.savings-entry-card .category-form button{grid-column:1}}
       @media(max-width:1250px){.entry-card .category-form{grid-template-columns:repeat(2,minmax(0,1fr))}.entry-card .category-form button{grid-column:1/-1}}
       @media(max-width:900px){.home-grid>.panel,.home-grid>.third{grid-column:1/-1}.sankey-flow{grid-template-columns:1fr}.flow-arrow{transform:rotate(90deg)}.comparison-grid{grid-template-columns:1fr}.filter-grid{grid-template-columns:1fr}.filter-grid .full{grid-column:1}.calendar-day{min-height:70px}.home-hero{align-items:flex-start;flex-direction:column}}
     `}</style>
     <button className={`floating-settings-button ${tab === 'settings' ? 'active' : ''}`} onClick={() => setTab('settings')} title="Configuración" aria-label="Abrir configuración"><Settings /></button>
+    <style>{`
+      /* Vista Inicio profesional y corrección definitiva de iconos */
+      .home-hero-clean{display:flex;align-items:flex-end;justify-content:space-between;margin:2px 0 18px;padding:0!important}
+      .home-hero-clean h1{font-size:30px;margin:0 0 4px;color:#f6f9ff}
+      .home-hero-clean p{margin:0;color:#91a9c4;font-size:14px}
+      .home-summary-cards{display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;gap:14px!important;margin-bottom:16px!important;overflow:visible!important}
+      .home-summary-cards .kpi-info-card{position:relative!important;min-height:168px!important;padding:22px 58px 22px 20px!important;border:1px solid #29405c!important;border-radius:15px!important;background:linear-gradient(145deg,#0d1d31,#0a1728)!important;overflow:visible!important;box-shadow:0 12px 28px rgba(0,0,0,.14)!important}
+      .home-summary-cards .kpi-info-card:nth-child(1){border-color:rgba(74,222,128,.58)!important}
+      .home-summary-cards .kpi-info-card:nth-child(2){border-color:rgba(251,113,133,.58)!important}
+      .home-summary-cards .kpi-info-card:nth-child(3){border-color:rgba(56,189,248,.58)!important}
+      .home-summary-cards .kpi-info-card:nth-child(4){border-color:rgba(167,139,250,.58)!important}
+      .home-summary-cards .kpi-info-card:nth-child(5){border-color:rgba(245,158,11,.58)!important}
+      .home-summary-cards .kpi-info-head{display:block!important;margin:0 0 18px!important;padding:0 28px 0 0!important;line-height:1.3!important}
+      .home-summary-cards .kpi-info-head>span{font-size:14px!important;color:#c5d4e6!important}
+      .home-summary-cards .kpi-info-card>strong{display:block!important;font-size:27px!important;line-height:1.12!important;margin:0 0 12px!important;letter-spacing:-.02em!important}
+      .home-summary-cards .kpi-info-card>small{display:block!important;max-width:calc(100% - 42px)!important;color:#a9bad0!important;font-size:13px!important;line-height:1.45!important}
+
+      /* El signo ? siempre arriba a la derecha y sólo responde al hover */
+      .kpi-help,.card-help{position:absolute!important;top:14px!important;right:14px!important;bottom:auto!important;left:auto!important;width:22px!important;height:22px!important;min-width:22px!important;min-height:22px!important;padding:0!important;margin:0!important;border:1px solid #7896b7!important;border-radius:50%!important;background:#0c2037!important;color:#c9d9eb!important;display:flex!important;align-items:center!important;justify-content:center!important;line-height:1!important;z-index:200!important;box-shadow:none!important;transform:none!important;cursor:help!important}
+      .kpi-help>svg,.card-help>svg{position:static!important;width:14px!important;height:14px!important;min-width:14px!important;min-height:14px!important;padding:0!important;margin:0!important;border:0!important;border-radius:0!important;background:transparent!important;color:inherit!important;box-shadow:none!important;transform:none!important;opacity:1!important}
+      .kpi-help-tooltip,.card-help-tooltip{opacity:0!important;visibility:hidden!important;pointer-events:none!important;display:block!important}
+      .kpi-help:hover .kpi-help-tooltip,.card-help:hover .card-help-tooltip{opacity:1!important;visibility:visible!important}
+      .kpi-help:focus .kpi-help-tooltip,.kpi-help:focus-visible .kpi-help-tooltip,.card-help:focus .card-help-tooltip,.card-help:focus-visible .card-help-tooltip{opacity:0!important;visibility:hidden!important}
+
+      /* Icono funcional de la card siempre abajo a la derecha */
+      .home-summary-cards .kpi-card-icon{position:absolute!important;right:20px!important;bottom:18px!important;top:auto!important;left:auto!important;width:36px!important;height:36px!important;display:flex!important;align-items:center!important;justify-content:center!important;padding:0!important;margin:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;opacity:1!important;transform:none!important;pointer-events:none!important;z-index:2!important}
+      .home-summary-cards .kpi-card-icon>svg{position:static!important;width:32px!important;height:32px!important;padding:0!important;margin:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;transform:none!important;opacity:1!important}
+      .home-summary-cards .kpi-info-card:nth-child(1) .kpi-card-icon{color:#4ade80!important}
+      .home-summary-cards .kpi-info-card:nth-child(2) .kpi-card-icon{color:#fb7185!important}
+      .home-summary-cards .kpi-info-card:nth-child(3) .kpi-card-icon{color:#38bdf8!important}
+      .home-summary-cards .kpi-info-card:nth-child(4) .kpi-card-icon{color:#a78bfa!important}
+      .home-summary-cards .kpi-info-card:nth-child(5) .kpi-card-icon{color:#f59e0b!important}
+
+      /* Corrección para todas las demás cards KPI */
+      .kpis article{position:relative!important;padding-right:58px!important;overflow:visible!important}
+      .kpis article>.card-help{top:14px!important;right:14px!important}
+      .kpis article>svg{position:absolute!important;right:18px!important;bottom:16px!important;top:auto!important;left:auto!important;width:27px!important;height:27px!important;padding:0!important;margin:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;transform:none!important;opacity:.95!important;pointer-events:none!important}
+
+      .home-dashboard-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:18px;margin-bottom:18px}
+      .home-dashboard-grid>.panel{position:relative;min-width:0;border-radius:16px;background:linear-gradient(145deg,#0d1c30,#0a1728);border:1px solid #29405c;box-shadow:0 14px 32px rgba(0,0,0,.14);overflow:visible!important}
+      .home-main-chart{height:330px!important}
+      .home-category-chart{display:grid;grid-template-columns:minmax(220px,.8fr) minmax(260px,1.2fr);gap:12px;align-items:center;min-height:330px}
+      .home-donut-chart{height:290px!important}
+      .home-category-legend{display:flex;flex-direction:column;gap:12px;padding-right:16px}
+      .home-category-legend>div{display:grid;grid-template-columns:12px minmax(0,1fr) auto 48px;align-items:center;gap:10px;font-size:12px}
+      .home-category-legend b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .home-category-legend strong{color:#f3f7fc}
+      .home-category-legend small{text-align:right;color:#9fb3c8}
+      .legend-dot{width:10px;height:10px;border-radius:50%}
+      .panel-corner-icon{position:absolute;right:16px;bottom:14px;color:#38bdf8;opacity:.9;pointer-events:none}
+      .panel-corner-icon svg{width:28px;height:28px}
+      .category-corner{color:#a78bfa}.forecast-corner{color:#4ade80}
+      .home-lower-panel{min-height:300px}
+      .compact-action{padding:8px 12px!important;font-size:12px!important}
+      .recent-movements-list{display:flex;flex-direction:column}
+      .recent-movement{display:grid;grid-template-columns:38px minmax(0,1fr) auto;align-items:center;gap:12px;padding:11px 4px;border-bottom:1px solid rgba(41,64,92,.7)}
+      .recent-movement:last-child{border-bottom:0}
+      .recent-movement>div{min-width:0}.recent-movement b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.recent-movement small{display:block;color:#8fa7c0;margin-top:3px}
+      .movement-round-icon{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+      .movement-round-icon svg{width:20px;height:20px}.movement-round-icon.income{background:rgba(74,222,128,.15);color:#4ade80}.movement-round-icon.expense{background:rgba(251,113,133,.15);color:#fb7185}
+      .prediction-layout{display:grid;grid-template-columns:minmax(200px,.7fr) minmax(260px,1.3fr);gap:20px;align-items:center;min-height:220px}
+      .prediction-copy>strong{display:block;font-size:32px;margin-bottom:12px}.prediction-copy p{color:#c7d4e4;line-height:1.5}.prediction-copy small{color:#8fa7c0}.prediction-mini-chart{height:230px!important}
+      .home-quick-section{margin:4px 0 20px}.home-quick-section h3{margin:0 0 12px}.home-quick-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}
+      .home-quick-grid button{min-height:48px;display:flex;align-items:center;justify-content:center;gap:8px;border-radius:10px;background:#0d1c30;border:1px solid #29405c;color:#dce8f5;cursor:pointer}.home-quick-grid button svg{width:19px;height:19px}
+      .quick-income{border-color:rgba(74,222,128,.4)!important;color:#4ade80!important}.quick-expense{border-color:rgba(251,113,133,.4)!important;color:#fb7185!important}.quick-calendar{border-color:rgba(56,189,248,.4)!important;color:#38bdf8!important}.quick-compare{border-color:rgba(167,139,250,.4)!important;color:#a78bfa!important}.quick-goal{border-color:rgba(245,158,11,.4)!important;color:#f59e0b!important}.quick-control{border-color:rgba(45,212,191,.4)!important;color:#2dd4bf!important}
+      .chart-help{position:relative!important;top:auto!important;right:auto!important;bottom:auto!important;left:auto!important;width:20px!important;height:20px!important;min-width:20px!important;border:1px solid #7896b7!important;border-radius:50%!important;background:#0c2037!important;color:#c9d9eb!important;display:inline-flex!important;align-items:center!important;justify-content:center!important}
+      .chart-help>svg{position:static!important;width:13px!important;height:13px!important;background:transparent!important;border:0!important;padding:0!important;margin:0!important}
+      .chart-help-tooltip{opacity:0!important;visibility:hidden!important}.chart-help:hover .chart-help-tooltip{opacity:1!important;visibility:visible!important}.chart-help:focus .chart-help-tooltip,.chart-help:focus-visible .chart-help-tooltip{opacity:0!important;visibility:hidden!important}
+      @media(max-width:1250px){.home-summary-cards{grid-template-columns:repeat(3,minmax(0,1fr))!important}.home-quick-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+      @media(max-width:900px){.home-dashboard-grid{grid-template-columns:1fr}.home-category-chart,.prediction-layout{grid-template-columns:1fr}.home-summary-cards{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+      @media(max-width:600px){.home-summary-cards{grid-template-columns:1fr!important}.home-quick-grid{grid-template-columns:1fr 1fr}.home-category-legend{padding-right:0}}
+
+      /* Pestañas laterales y vistas independientes */
+      .side-nav nav>button{margin-bottom:5px}
+
+      .monthly-group-top{border-top:0!important;margin-top:0!important;padding-top:0!important;margin-bottom:8px}
+      .app-content{display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;padding-top:0!important}
+      .app-content main{display:block!important;align-self:stretch!important;margin:0!important;padding-top:12px!important}
+      .app-content main>section,.app-content main>.panel,.app-content main>.table-panel{align-self:stretch!important;margin-left:0!important;margin-right:0!important}
+      .standalone-view,.table-panel,.entry-grid,.charts,.dashboard-grid,.home-grid{align-self:stretch!important;justify-self:stretch!important}
+      .table-panel{min-height:0!important}.table-panel .table-wrap{min-height:0!important}
+      .top-insight-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 14px}
+      .top-insight-card{position:relative;border:1px solid #29405c;border-radius:14px;background:#0d1c30;padding:16px;min-height:108px;overflow:hidden}
+      .top-insight-card span{display:block;color:#8fb0d3;font-size:12px;margin-bottom:8px}.top-insight-card strong{display:block;font-size:22px;line-height:1.15;color:#f3f8ff}.top-insight-card small{display:block;color:#7f9ab7;margin-top:7px}.top-insight-card svg{position:absolute;right:14px;bottom:12px;width:26px;height:26px;color:#5e82a8}
+      .top-insight-card.positive{border-color:rgba(74,222,128,.45)}.top-insight-card.negative{border-color:rgba(251,113,133,.45)}.top-insight-card.info{border-color:rgba(56,189,248,.45)}.top-insight-card.warn{border-color:rgba(245,158,11,.45)}
+      @media(max-width:1100px){.top-insight-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:650px){.top-insight-grid{grid-template-columns:1fr}}
+
+      .standalone-view{margin-top:4px;min-height:420px;padding:20px!important}
+      .standalone-view .panel-title{align-items:center;gap:18px;flex-wrap:wrap}
+      .calendar-view .calendar-grid{margin-top:18px}
+      .compare-chart{height:360px;margin-top:20px}
+      .goals-form{display:grid!important;grid-template-columns:minmax(260px,1fr) 190px 130px auto!important;align-items:end!important;margin:18px 0}
+
+      /* Ajuste final: vistas independientes siempre arriba y con respiración visual */
+      .app-content main{display:block!important;min-height:0!important;height:auto!important;padding-top:8px!important;justify-content:flex-start!important;align-items:stretch!important}
+      .standalone-view{margin:0!important;align-self:flex-start!important;justify-self:stretch!important;width:100%!important;max-width:none!important;min-height:0!important;padding:22px!important}
+      .standalone-view>.panel-title{margin:0 0 20px!important;padding:0 0 14px!important;border-bottom:1px solid #243b57;align-items:flex-start!important}
+      .standalone-view>.panel-title h3{margin:0 0 5px!important}
+      .standalone-view>.panel-title label{margin-left:auto;align-self:center}
+      .standalone-view .top-insight-grid{margin-bottom:18px!important}
+      .standalone-view .top-insight-card{overflow:visible!important;padding-right:48px!important}
+      .standalone-view .top-insight-card>.kpi-help{top:12px!important;right:12px!important}
+      .standalone-view .top-insight-card>svg{right:14px!important;bottom:12px!important;top:auto!important}
+      .visual-two-column{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(320px,.75fr);gap:14px;margin:16px 0}
+      .visual-card{border:1px solid #29405c;border-radius:14px;background:#0b192b;padding:16px;min-width:0;overflow:visible}
+      .visual-card .panel-title{margin:0 0 12px!important;padding:0!important;border:0!important}
+      .visual-chart{height:280px;width:100%}
+      .insight-list{display:grid;gap:10px}
+      .insight-row{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #29405c;border-radius:11px;background:#0d1c30;padding:12px}
+      .insight-row span{color:#91abc7}.insight-row strong{font-size:17px}
+      .goal-overview-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,.72fr);gap:14px;margin:16px 0 18px}
+      .goal-empty-advice{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:14px}
+      .goal-empty-advice article{border:1px solid #29405c;border-radius:12px;padding:14px;background:#0d1c30}
+      .goal-empty-advice b{display:block;margin-bottom:6px;color:#e9f4ff}.goal-empty-advice span{font-size:12px;color:#8fa9c5;line-height:1.45}
+      @media(max-width:1000px){.visual-two-column,.goal-overview-grid{grid-template-columns:1fr}.goal-empty-advice{grid-template-columns:1fr}}
+
+      /* Vista de ingresos y egresos */
+      .app-content{padding:20px 22px 34px!important;align-self:stretch!important}
+      .toolbar{min-height:44px!important;margin:0 0 12px!important;padding:0!important;align-items:center!important}
+      .table-panel{margin-top:0!important;width:100%!important;max-width:none!important}
+      .table-panel .panel-title{padding:16px 18px!important;min-height:72px!important}
+      .table-panel .table-wrap{max-height:calc(100vh - 255px)!important;overflow:auto!important}
+      .table-panel table{width:100%!important;table-layout:fixed!important}
+      .table-panel th:nth-child(1),.table-panel td:nth-child(1){width:15%!important}
+      .table-panel th:nth-child(2),.table-panel td:nth-child(2){width:23%!important}
+      .table-panel th:nth-child(3),.table-panel td:nth-child(3){width:35%!important}
+      .table-panel th:nth-child(4),.table-panel td:nth-child(4){width:18%!important}
+      .table-panel th:nth-child(5),.table-panel td:nth-child(5){width:9%!important}
+      .table-panel td,.table-panel th{padding:14px 16px!important;vertical-align:middle!important}
+      .table-panel .search.compact{min-width:280px!important}
+      @media(max-width:900px){.goals-form{grid-template-columns:1fr!important}.table-panel .search.compact{min-width:0!important;width:100%!important}.app-content{padding:14px!important}}
+    `}</style>
     <header><div className="brand"><div className="brand-icon"><WalletCards /></div><div><b>Mis Finanzas</b><small>Información sincronizada y siempre disponible</small></div></div><div className="header-actions"><button className={`ghost header-icon ${filtersOpen || Object.values(filters).some(v => v && v !== 'all') ? 'active' : ''}`} onClick={() => { setFilterDraft(filters); setFiltersOpen(true) }} title="Filtros"><SlidersHorizontal />{Object.values(filters).some(v => v && v !== 'all') && <span className="filter-dot" />}</button><button className={`ghost header-icon ${notificationsOpen ? 'active' : ''}`} onClick={() => setNotificationsOpen(true)} title="Notificaciones"><Bell />{notifications.length > 0 && <span className="notification-badge">{notifications.length}</span>}</button><button className="secondary" onClick={() => openNew('income')}><ArrowUpCircle /> Ingreso</button><button onClick={() => openNew('expense')}><ArrowDownCircle /> Egreso</button>{configured && <button className="ghost" onClick={() => supabase.auth.signOut()} title="Cerrar sesión" aria-label="Cerrar sesión"><LogOut /></button>}</div></header>
     {filtersOpen && <div className="overlay-panel" onMouseDown={() => setFiltersOpen(false)}>
       <aside className="drawer" onMouseDown={e => e.stopPropagation()}>
@@ -1131,19 +1485,22 @@ export default function App() {
         <div className="side-nav-top"><button className="ghost side-toggle" onClick={() => setSidebarOpen(v => !v)} title={sidebarOpen ? 'Ocultar barra lateral' : 'Mostrar barra lateral'}><Menu /></button></div>
         <nav className="side-menu">
           <button className={tab === 'home' ? 'active' : ''} onClick={() => setTab('home')} title="Inicio"><Home /><span className="nav-label">INICIO</span></button>
-          <button className={tab === 'analysis' ? 'active' : ''} onClick={() => setTab('analysis')} title="Análisis de finanzas"><CircleDollarSign /><span className="nav-label">ANÁLISIS DE FINANZAS</span></button>
-          <button className={tab === 'big-expenses' ? 'active' : ''} onClick={() => setTab('big-expenses')} title="Grandes gastos"><ReceiptText /><span className="nav-label">GRANDES GASTOS</span></button>
-          <button className={tab === 'savings' ? 'active' : ''} onClick={() => setTab('savings')} title="Ahorros"><PiggyBank /><span className="nav-label">AHORROS</span></button>
-          <div className="monthly-group">
+          <div className="monthly-group monthly-group-top">
             <button className={`monthly-toggle ${monthlyOpen ? 'open' : ''}`} onClick={() => setMonthlyOpen(v => !v)} title="Mensual"><span className="monthly-label"><CalendarDays /><span className="nav-label">MENSUAL</span></span><ChevronDown className="chevron" /></button>
             {monthlyOpen && <div className="monthly-items">
               <button className={tab === 'dashboard' ? 'active' : ''} onClick={() => setTab('dashboard')} title="Dashboard mensual"><LayoutDashboard /><span className="nav-label">Dashboard</span></button>
               <button className={tab === 'cargar' ? 'active' : ''} onClick={() => setTab('cargar')} title="Cargar movimientos"><Plus /><span className="nav-label">Cargar</span></button>
               <button className={tab === 'income' ? 'active' : ''} onClick={() => setTab('income')} title="Ingresos mensuales"><TrendingUp /><span className="nav-label">Ingresos</span></button>
               <button className={tab === 'expense' ? 'active' : ''} onClick={() => setTab('expense')} title="Egresos mensuales"><TrendingDown /><span className="nav-label">Egresos</span></button>
-              <button className={tab === 'control' ? 'active' : ''} onClick={() => setTab('control')} title="Control mensual"><Settings2 /><span className="nav-label">Control</span></button>
             </div>}
           </div>
+          <button className={tab === 'analysis' ? 'active' : ''} onClick={() => setTab('analysis')} title="Análisis de finanzas"><CircleDollarSign /><span className="nav-label">ANÁLISIS DE FINANZAS</span></button>
+          <button className={tab === 'big-expenses' ? 'active' : ''} onClick={() => setTab('big-expenses')} title="Grandes gastos"><ReceiptText /><span className="nav-label">GRANDES GASTOS</span></button>
+          <button className={tab === 'savings' ? 'active' : ''} onClick={() => setTab('savings')} title="Ahorros"><PiggyBank /><span className="nav-label">AHORROS</span></button>
+          <button className={tab === 'calendar' ? 'active' : ''} onClick={() => setTab('calendar')} title="Calendario financiero"><CalendarDays /><span className="nav-label">CALENDARIO FINANCIERO</span></button>
+          <button className={tab === 'compare' ? 'active' : ''} onClick={() => setTab('compare')} title="Comparar meses"><RefreshCw /><span className="nav-label">COMPARAR MESES</span></button>
+          <button className={tab === 'goals' ? 'active' : ''} onClick={() => setTab('goals')} title="Metas de ahorro"><Target /><span className="nav-label">METAS DE AHORRO</span></button>
+          <button className={tab === 'control' ? 'active' : ''} onClick={() => setTab('control')} title="Control"><SlidersHorizontal /><span className="nav-label">CONTROL</span></button>
         </nav>
       </aside>
       <main className="app-content">
@@ -1151,7 +1508,7 @@ export default function App() {
       <div className="toolbar">
         {tab === 'analysis'
           ? <label>Período analizado <strong>{analysisMonths[0] || DATA_START} a {analysisMonths.at(-1) || DATA_START}</strong></label>
-          : tab === 'big-expenses' || tab === 'savings' || tab === 'settings'
+          : tab === 'big-expenses' || tab === 'savings' || tab === 'settings' || tab === 'calendar' || tab === 'compare' || tab === 'goals' || tab === 'control'
             ? <span></span>
             : <label>Período <input type="month" value={month} onChange={e => setMonth(e.target.value)} /></label>}
         {tab === 'dashboard' && <small className="period-note"><CalendarDays /> Todos los indicadores corresponden al mes seleccionado</small>}
@@ -1159,35 +1516,185 @@ export default function App() {
       </div>
 
       {tab === 'home' && <>
-        <section className="home-hero">
-          <div><h1>Resumen financiero</h1><p>Una vista rápida del saldo, movimientos, alertas y objetivos.</p></div>
-          <div className="quick-actions"><button className="secondary" onClick={() => openNew('income')}><ArrowUpCircle/> Nuevo ingreso</button><button onClick={() => openNew('expense')}><ArrowDownCircle/> Nuevo egreso</button></div>
+        <section className="home-hero home-hero-clean">
+          <div>
+            <h1>Inicio</h1>
+            <p>Resumen general de las finanzas</p>
+          </div>
         </section>
-        <section className="kpis compact-kpis">
-          <article><span>Saldo actual</span><strong className={closingBalance>=0?'positive':'negative'}>{money(closingBalance)}</strong><WalletCards/><small>{month}</small></article>
-          <article><span>Gastado este mes</span><strong className="negative">{money(expenseWithoutSavings)}</strong><TrendingDown/><small>{expenseRowsWithoutSavings.length} egresos</small></article>
-          <article><span>Ahorrado este mes</span><strong className="positive">{money(monthlySavingsDeposits)}</strong><PiggyBank/><small>Saldo total {money(savingsBalance)}</small></article>
-          <article><span>Próxima meta</span><strong>{nextGoal ? money(nextGoal.remaining) : 'Sin meta'}</strong><Target/><small>{nextGoal?.name || 'Crear una meta en Ahorros'}</small></article>
-          <article><span>Alertas</span><strong>{notifications.length}</strong><Bell/><small>Revisar centro de notificaciones</small></article>
+
+        <section className="kpis home-summary-cards">
+          <KpiInfoCard title="Saldo actual" value={money(closingBalance)} detail={`Actualizado a ${month}`} icon={<WalletCards/>} tone={closingBalance>=0?'positive':'negative'} help="Es el dinero disponible al finalizar el mes seleccionado. Se calcula sumando el saldo inicial y los ingresos, y restando los egresos y los aportes enviados a ahorros." />
+          <KpiInfoCard title="Gastado este mes" value={money(expenseWithoutSavings)} detail={`${expenseRowsWithoutSavings.length} egresos`} icon={<TrendingDown/>} tone="negative" help="Suma todos los egresos del mes seleccionado, sin contar el dinero trasladado a la sección Ahorros." />
+          <KpiInfoCard title="Ahorrado este mes" value={money(monthlySavingsDeposits)} detail={`Saldo total ${money(savingsBalance)}`} icon={<PiggyBank/>} tone="info" help="Muestra cuánto dinero fue guardado durante el mes seleccionado. El detalle inferior indica el saldo total acumulado en ahorros." />
+          <KpiInfoCard title="Próxima meta" value={nextGoal ? money(nextGoal.remaining) : 'Sin meta'} detail={nextGoal?.name || 'Crear una meta en Ahorros'} icon={<Target/>} tone="purple" help="Indica cuánto falta para completar la meta de ahorro activa con mayor prioridad." />
+          <KpiInfoCard title="Alertas" value={notifications.length} detail="Revisar centro de notificaciones" icon={<Bell/>} tone="warning" help="Cantidad de avisos financieros detectados, como aumento de gastos, falta de movimientos o metas próximas a completarse." />
         </section>
-        <section className="home-grid">
-          <article className="panel prediction-card"><div className="panel-title"><div><ChartInfoTitle title="Predicción financiera" text="Proyecta el saldo de cierre usando el ritmo de gastos registrado durante el mes seleccionado."/><span>Estimación al cierre del mes</span></div></div><strong className={forecastClosing>=0?'positive':'negative'}>{money(forecastClosing)}</strong><p>Gasto proyectado: {money(forecastExpense)}. Esta estimación cambia con cada nuevo movimiento.</p></article>
-          <article className="panel"><div className="panel-title"><div><h3>Últimos movimientos</h3><span>Los cinco registros más recientes</span></div></div>{movements.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,5).map(x=><div className="concept-row" key={x.id}><div><span>{x.description}</span><small>{x.date?.split('-').reverse().join('/')} · {x.categories?.name || 'Sin categoría'}</small></div><b className={x.type==='income'?'positive':'negative'}>{x.type==='income'?'+':'-'}{money(x.amount)}</b></div>)}</article>
-          <article className="panel wide"><div className="panel-title"><div><ChartInfoTitle title="Comparador mensual" text="Compara ingresos, egresos y resultado neto del mes seleccionado contra otro mes."/><span>Mes actual frente al período elegido</span></div><input type="month" value={comparisonMonth} onChange={e=>setComparisonMonth(e.target.value)}/></div><div className="comparison-grid"><div className="comparison-card"><span>Ingresos</span><strong>{money(income)}</strong><small>{previousIncome ? `${((income/previousIncome-1)*100).toFixed(1)}% vs ${comparisonMonth}` : 'Sin base comparable'}</small></div><div className="comparison-card"><span>Egresos</span><strong>{money(expenseWithoutSavings)}</strong><small>{previousExpense ? `${((expenseWithoutSavings/previousExpense-1)*100).toFixed(1)}% vs ${comparisonMonth}` : 'Sin base comparable'}</small></div><div className="comparison-card"><span>Resultado neto</span><strong>{money(income-expenseWithoutSavings)}</strong><small>Anterior: {money(previousIncome-previousExpense)}</small></div></div></article>
-          <article className="panel wide"><div className="panel-title"><div><ChartInfoTitle title="Calendario financiero" text="Muestra por día los ingresos, egresos y aportes de ahorro del mes seleccionado."/><span>{month}</span></div></div><div className="calendar-grid">{['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'].map(d=><div className="calendar-head" key={d}>{d}</div>)}{Array.from({length:calendarDays.first}).map((_,i)=><div className="calendar-day empty" key={`e${i}`}/>) }{Array.from({length:calendarDays.days},(_,i)=>i+1).map(d=>{const v=calendarDays.map[d]||{};return <div className="calendar-day" key={d}><b>{d}</b>{v.income>0&&<span className="calendar-value income">+ {money(v.income)}</span>}{v.expense>0&&<span className="calendar-value expense">- {money(v.expense)}</span>}{v.savings>0&&<span className="calendar-value savings">Ahorro {money(v.savings)}</span>}</div>})}</div></article>
-          <article className="panel wide"><div className="panel-title"><div><ChartInfoTitle title="Flujo del dinero" text="Representa cómo los ingresos disponibles se distribuyen entre gastos, ahorros y saldo restante."/><span>Vista tipo Sankey simplificada</span></div></div><div className="sankey-flow"><div className="flow-node"><span>Ingresos</span><strong className="positive">{money(income)}</strong></div><div className="flow-arrow">→</div><div className="flow-node"><span>Dinero disponible</span><strong>{money(openingBalance+income)}</strong></div><div className="flow-arrow">→</div><div><div className="flow-node"><span>Gastos</span><strong className="negative">{money(expenseWithoutSavings)}</strong></div><div className="flow-node"><span>Ahorros</span><strong>{money(monthlySavingsDeposits)}</strong></div><div className="flow-node"><span>Saldo</span><strong className={closingBalance>=0?'positive':'negative'}>{money(closingBalance)}</strong></div></div></div></article>
-          <article className="panel wide"><div className="panel-title"><div><ChartInfoTitle title="Panel de categorías" text="Ordena las categorías por gasto y muestra el peso relativo de cada una dentro del total mensual."/><span>Distribución del gasto mensual</span></div></div><div className="category-panel-grid">{byCategory.map((x,i)=><div className={`category-panel-card category-color-${i%6}`} key={x.name}><div className="category-panel-head"><b>{x.name}</b><strong>{money(x.value)}</strong></div><small>{expenseWithoutSavings?((x.value/expenseWithoutSavings)*100).toFixed(1):0}% del gasto</small><div className="category-progress"><div style={{width:`${expenseWithoutSavings?Math.min(x.value/expenseWithoutSavings*100,100):0}%`}}/></div></div>)}</div></article>
+
+        <section className="home-dashboard-grid">
+          <article className="panel home-chart-panel">
+            <div className="panel-title">
+              <div>
+                <ChartInfoTitle title="Evolución de ingresos y egresos" text="Compara los ingresos y los egresos reales de los últimos meses. Permite detectar rápidamente meses con mayor gasto o mayor capacidad de ahorro." />
+                <span>Últimos meses registrados</span>
+              </div>
+            </div>
+            <div className="chart home-main-chart">
+              <ResponsiveContainer>
+                <BarChart data={financeAnalysis.analysisMonthTotals.slice(-6)} margin={{top:8,right:10,left:0,bottom:0}}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#203047" />
+                  <XAxis dataKey="month" stroke="#7890a8" />
+                  <YAxis stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`} />
+                  <Tooltip formatter={v=>money(v)} contentStyle={{background:'#071524',border:'1px solid #36516f',borderRadius:10}} />
+                  <Legend />
+                  <Bar dataKey="ingresos" name="Ingresos" fill="#4ade80" radius={[6,6,0,0]} />
+                  <Bar dataKey="egresos" name="Egresos sin ahorros" fill="#fb7185" radius={[6,6,0,0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <span className="panel-corner-icon income-corner"><TrendingUp /></span>
+          </article>
+
+          <article className="panel home-chart-panel">
+            <div className="panel-title">
+              <div>
+                <ChartInfoTitle title="Distribución de gastos por categoría" text="Muestra qué porcentaje del gasto mensual corresponde a cada categoría. Las categorías con mayor participación concentran la mayor parte de los egresos." />
+                <span>Participación sobre el gasto del mes</span>
+              </div>
+            </div>
+            <div className="home-category-chart">
+              <div className="chart home-donut-chart">
+                <ResponsiveContainer>
+                  <PieChart>
+                    <Pie data={byCategory.slice(0,6)} dataKey="value" nameKey="name" innerRadius="55%" outerRadius="82%" paddingAngle={2}>
+                      {byCategory.slice(0,6).map((_,i)=><Cell key={i} fill={palette[i%palette.length]} />)}
+                    </Pie>
+                    <Tooltip formatter={v=>money(v)} contentStyle={{background:'#071524',border:'1px solid #36516f',borderRadius:10}} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="home-category-legend">
+                {byCategory.slice(0,6).map((item,i)=><div key={item.name}>
+                  <span className="legend-dot" style={{background:palette[i%palette.length]}} />
+                  <b>{item.name}</b>
+                  <strong>{money(item.value)}</strong>
+                  <small>{expenseWithoutSavings ? `${((item.value/expenseWithoutSavings)*100).toFixed(1)}%` : '0%'}</small>
+                </div>)}
+                {!byCategory.length && <p className="empty">Sin gastos en el mes seleccionado.</p>}
+              </div>
+            </div>
+            <span className="panel-corner-icon category-corner"><CircleDollarSign /></span>
+          </article>
+
+          <article className="panel home-lower-panel">
+            <div className="panel-title">
+              <div><ChartInfoTitle title="Últimos movimientos" text="Muestra los movimientos más recientes de la cuenta, ordenados desde el último registro cargado." /><span>Los cinco registros más recientes</span></div>
+              <button className="ghost compact-action" onClick={()=>setTab('dashboard')}>Ver todos</button>
+            </div>
+            <div className="recent-movements-list">
+              {movements.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,5).map(x=><div className="recent-movement" key={x.id}>
+                <span className={`movement-round-icon ${x.type}`}>
+                  {x.type==='income'?<ArrowUpCircle/>:<ArrowDownCircle/>}
+                </span>
+                <div><b>{x.description}</b><small>{x.categories?.name || 'Sin categoría'} · {x.date?.split('-').reverse().join('/')}</small></div>
+                <strong className={x.type==='income'?'positive':'negative'}>{x.type==='income'?'+':'-'}{money(x.amount)}</strong>
+              </div>)}
+              {!movements.length && <div className="empty">Todavía no hay movimientos registrados.</div>}
+            </div>
+          </article>
+
+          <article className="panel home-lower-panel prediction-modern">
+            <div className="panel-title">
+              <div><ChartInfoTitle title="Predicción al cierre del mes" text="Proyecta el saldo de cierre usando el ritmo de ingresos y egresos registrado hasta el momento. La estimación cambia con cada nuevo movimiento." /><span>Estimación basada en el ritmo actual</span></div>
+            </div>
+            <div className="prediction-layout">
+              <div className="prediction-copy">
+                <strong className={forecastClosing>=0?'positive':'negative'}>{money(forecastClosing)}</strong>
+                <p>Saldo estimado al finalizar el mes seleccionado.</p>
+                <small>Gasto proyectado: {money(forecastExpense)}</small>
+              </div>
+              <div className="chart prediction-mini-chart">
+                <ResponsiveContainer>
+                  <LineChart data={daily} margin={{top:10,right:12,left:0,bottom:0}}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#203047" />
+                    <XAxis dataKey="day" stroke="#7890a8" tick={{fontSize:10}} />
+                    <YAxis stroke="#7890a8" tick={{fontSize:10}} tickFormatter={v=>`$${Math.round(v/1000)}k`} />
+                    <Tooltip formatter={v=>money(v)} contentStyle={{background:'#071524',border:'1px solid #36516f',borderRadius:10}} />
+                    <Line type="monotone" dataKey="acumulado" name="Saldo" stroke="#4ade80" strokeWidth={3} dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+            <span className="panel-corner-icon forecast-corner"><TrendingUp /></span>
+          </article>
+        </section>
+
+        <section className="home-quick-section">
+          <h3>Accesos rápidos</h3>
+          <div className="home-quick-grid">
+            <button className="quick-income" onClick={()=>openNew('income')}><ArrowUpCircle/> Nuevo ingreso</button>
+            <button className="quick-expense" onClick={()=>openNew('expense')}><ArrowDownCircle/> Nuevo egreso</button>
+            <button className="quick-calendar" onClick={()=>setTab('calendar')}><CalendarDays/> Calendario financiero</button>
+            <button className="quick-compare" onClick={()=>setTab('compare')}><RefreshCw/> Comparar meses</button>
+            <button className="quick-goal" onClick={()=>setTab('goals')}><Target/> Metas de ahorro</button>
+            <button className="quick-control" onClick={()=>setTab('control')}><Settings2/> Control</button>
+          </div>
         </section>
       </>}
+      {tab === 'calendar' && <section className="panel standalone-view calendar-view">
+        <div className="panel-title"><div><ChartInfoTitle title="Calendario financiero" text="Resume por día los ingresos, egresos y aportes a ahorros del mes seleccionado." /><span>{month}</span></div><label>Mes <input type="month" value={month} onChange={e=>setMonth(e.target.value)} /></label></div>
+        <div className="top-insight-grid">
+          <article className="top-insight-card positive"><CardHelp text="Total de ingresos registrados dentro del mes seleccionado."/><span>Ingresos del mes</span><strong>{money(income)}</strong><small>{incomeRows.length} movimientos</small><TrendingUp/></article>
+          <article className="top-insight-card negative"><CardHelp text="Total de egresos del mes sin contar los aportes enviados a ahorros."/><span>Egresos del mes</span><strong>{money(expenseWithoutSavings)}</strong><small>{expenseRowsWithoutSavings.length} movimientos</small><TrendingDown/></article>
+          <article className="top-insight-card info"><CardHelp text="Cantidad de fechas distintas que tuvieron al menos un movimiento financiero."/><span>Días con movimientos</span><strong>{new Set(monthRows.map(x=>x.date)).size}</strong><small>Actividad registrada</small><CalendarDays/></article>
+          <article className="top-insight-card warn"><CardHelp text="Promedio de egresos calculado únicamente sobre los días que tuvieron gastos."/><span>Promedio diario de gasto</span><strong>{money(avgDailyExpense)}</strong><small>Sobre días con egresos</small><CircleDollarSign/></article>
+        </div>
+        <div className="visual-two-column">
+          <article className="visual-card"><div className="panel-title"><div><ChartInfoTitle title="Actividad diaria" text="Compara los ingresos y egresos registrados cada día del mes para detectar jornadas de mayor movimiento."/><span>Ingresos y egresos por día</span></div></div><div className="visual-chart"><ResponsiveContainer><BarChart data={Array.from({length:calendarDays.days},(_,i)=>{const d=i+1;const t=calendarDays.map[d]||{};return{dia:d,ingresos:t.income||0,egresos:t.expense||0}})}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis dataKey="dia" stroke="#7890a8"/><YAxis stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><Tooltip formatter={v=>money(v)} contentStyle={{background:'#071524',border:'1px solid #36516f',borderRadius:10}}/><Legend/><Bar dataKey="ingresos" name="Ingresos" fill="#4ade80" radius={[4,4,0,0]}/><Bar dataKey="egresos" name="Egresos" fill="#fb7185" radius={[4,4,0,0]}/></BarChart></ResponsiveContainer></div></article>
+          <article className="visual-card"><div className="panel-title"><div><ChartInfoTitle title="Resumen del mes" text="Destaca los datos más útiles del calendario para interpretar rápidamente la actividad financiera."/></div></div><div className="insight-list"><div className="insight-row"><span>Día con mayor gasto</span><strong>{biggestExpense?.date ? biggestExpense.date.split('-').reverse().join('/') : '—'}</strong></div><div className="insight-row"><span>Mayor gasto individual</span><strong className="negative">{money(biggestExpense?.amount||0)}</strong></div><div className="insight-row"><span>Resultado del mes</span><strong className={(income-expenseWithoutSavings)>=0?'positive':'negative'}>{money(income-expenseWithoutSavings)}</strong></div><div className="insight-row"><span>Días sin movimientos</span><strong>{Math.max(calendarDays.days-new Set(monthRows.map(x=>x.date)).size,0)}</strong></div></div></article>
+        </div>
+        <div className="calendar-grid">{['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'].map(day=><div className="calendar-head" key={day}>{day}</div>)}{Array.from({length:calendarDays.first}).map((_,i)=><div className="calendar-day empty" key={`empty-${i}`}></div>)}{Array.from({length:calendarDays.days},(_,i)=>i+1).map(day=>{ const totals=calendarDays.map[day]||{}; return <article className="calendar-day" key={day}><b>{day}</b>{totals.income>0&&<span className="calendar-value income">+ {money(totals.income)}</span>}{totals.expense>0&&<span className="calendar-value expense">- {money(totals.expense)}</span>}{totals.savings>0&&<span className="calendar-value savings">Ahorro {money(totals.savings)}</span>}</article>})}</div>
+      </section>}
+
+      {tab === 'compare' && <section className="panel standalone-view compare-view">
+        <div className="panel-title"><div><ChartInfoTitle title="Comparador mensual" text="Compara ingresos, egresos y resultado neto del mes actual contra otro mes seleccionado." /><span>{month} frente a {comparisonMonth}</span></div><label>Comparar con <input type="month" value={comparisonMonth} onChange={e=>setComparisonMonth(e.target.value)} /></label></div>
+        <div className="top-insight-grid">
+          <article className="top-insight-card positive"><CardHelp text="Cambio porcentual de los ingresos del mes actual respecto del mes elegido para comparar."/><span>Variación de ingresos</span><strong>{previousIncome ? `${(((income-previousIncome)/previousIncome)*100).toFixed(1)}%` : '—'}</strong><small>{money(income-previousIncome)} de diferencia</small><TrendingUp/></article>
+          <article className="top-insight-card negative"><CardHelp text="Cambio porcentual de los egresos actuales frente al período comparado, sin incluir aportes a ahorros."/><span>Variación de egresos</span><strong>{previousExpense ? `${(((expenseWithoutSavings-previousExpense)/previousExpense)*100).toFixed(1)}%` : '—'}</strong><small>{money(expenseWithoutSavings-previousExpense)} de diferencia</small><TrendingDown/></article>
+          <article className="top-insight-card info"><CardHelp text="Diferencia entre ingresos y egresos del mes actual."/><span>Resultado actual</span><strong>{money(income-expenseWithoutSavings)}</strong><small>Ingreso menos egresos</small><CircleDollarSign/></article>
+          <article className="top-insight-card warn"><CardHelp text="Período con el resultado neto más alto entre los dos meses comparados."/><span>Mejor período</span><strong>{(income-expenseWithoutSavings)>=(previousIncome-previousExpense)?month:comparisonMonth}</strong><small>Mayor resultado neto</small><CalendarDays/></article>
+        </div>
+        <div className="comparison-grid"><article className="comparison-card"><span>Ingresos</span><strong className="positive">{money(income)}</strong><small>Anterior: {money(previousIncome)}</small></article><article className="comparison-card"><span>Egresos</span><strong className="negative">{money(expenseWithoutSavings)}</strong><small>Anterior: {money(previousExpense)}</small></article><article className="comparison-card"><span>Resultado neto</span><strong className={(income-expenseWithoutSavings)>=0?'positive':'negative'}>{money(income-expenseWithoutSavings)}</strong><small>Anterior: {money(previousIncome-previousExpense)}</small></article></div>
+        <div className="visual-two-column">
+          <article className="visual-card"><div className="panel-title"><div><ChartInfoTitle title="Comparación general" text="Presenta lado a lado los ingresos y egresos de ambos períodos para identificar cambios de escala."/></div></div><div className="visual-chart"><ResponsiveContainer><BarChart data={[{periodo:comparisonMonth,ingresos:previousIncome,egresos:previousExpense},{periodo:month,ingresos:income,egresos:expenseWithoutSavings}]}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis dataKey="periodo" stroke="#7890a8"/><YAxis stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><Tooltip formatter={v=>money(v)} contentStyle={{background:'#071524',border:'1px solid #36516f',borderRadius:10}}/><Legend/><Bar dataKey="ingresos" name="Ingresos" fill="#4ade80" radius={[5,5,0,0]}/><Bar dataKey="egresos" name="Egresos" fill="#fb7185" radius={[5,5,0,0]}/></BarChart></ResponsiveContainer></div></article>
+          <article className="visual-card"><div className="panel-title"><div><ChartInfoTitle title="Resultado neto" text="Compara cuánto quedó disponible después de restar los egresos a los ingresos en cada período."/></div></div><div className="visual-chart"><ResponsiveContainer><BarChart data={[{periodo:comparisonMonth,resultado:previousIncome-previousExpense},{periodo:month,resultado:income-expenseWithoutSavings}]}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis dataKey="periodo" stroke="#7890a8"/><YAxis stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><Tooltip formatter={v=>money(v)} contentStyle={{background:'#071524',border:'1px solid #36516f',borderRadius:10}}/><Bar dataKey="resultado" name="Resultado neto" fill="#38bdf8" radius={[5,5,0,0]}/></BarChart></ResponsiveContainer></div></article>
+        </div>
+      </section>}
+
+      {tab === 'goals' && <section className="panel standalone-view goals-view">
+        <div className="panel-title"><div><ChartInfoTitle title="Metas de ahorro" text="Organiza objetivos por prioridad y distribuye automáticamente el saldo disponible entre ellos." /><span>Saldo disponible: {money(savingsBalance)}</span></div></div>
+        <div className="top-insight-grid">
+          <article className="top-insight-card positive"><CardHelp text="Dinero acumulado actualmente en el fondo de ahorros y disponible para asignar a objetivos."/><span>Saldo disponible</span><strong>{money(savingsBalance)}</strong><small>Para distribuir entre metas</small><PiggyBank/></article>
+          <article className="top-insight-card info"><CardHelp text="Cantidad total de metas creadas y cuántas ya alcanzaron el 100%."/><span>Metas activas</span><strong>{allocatedSavingsGoals.length}</strong><small>{allocatedSavingsGoals.filter(x=>x.completed).length} completadas</small><Target/></article>
+          <article className="top-insight-card warn"><CardHelp text="Suma de los importes objetivo de todas las metas registradas."/><span>Objetivo total</span><strong>{money(allocatedSavingsGoals.reduce((sum,x)=>sum+Number(x.target||0),0))}</strong><small>Suma de todas las metas</small><CircleDollarSign/></article>
+          <article className="top-insight-card negative"><CardHelp text="Dinero que todavía falta acumular para completar todas las metas."/><span>Monto pendiente</span><strong>{money(allocatedSavingsGoals.reduce((sum,x)=>sum+Number(x.remaining||0),0))}</strong><small>Falta para completar todo</small><TrendingUp/></article>
+        </div>
+        <div className="goal-overview-grid">
+          <article className="visual-card"><div className="panel-title"><div><ChartInfoTitle title="Avance por objetivo" text="Compara el dinero ya asignado y el monto que todavía falta para completar cada meta."/></div></div><div className="visual-chart"><ResponsiveContainer><BarChart data={allocatedSavingsGoals.slice(0,8).map(g=>({meta:g.name,asignado:g.allocated,pendiente:g.remaining}))} layout="vertical" margin={{left:18,right:18}}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis type="number" stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><YAxis type="category" dataKey="meta" width={120} stroke="#7890a8" tick={{fontSize:11}}/><Tooltip formatter={v=>money(v)} contentStyle={{background:'#071524',border:'1px solid #36516f',borderRadius:10}}/><Legend/><Bar dataKey="asignado" name="Asignado" stackId="a" fill="#4ade80"/><Bar dataKey="pendiente" name="Pendiente" stackId="a" fill="#334b68" radius={[0,5,5,0]}/></BarChart></ResponsiveContainer></div></article>
+          <article className="visual-card"><div className="panel-title"><div><ChartInfoTitle title="Plan sugerido" text="Resume el esfuerzo mensual necesario para avanzar en las metas según la capacidad de ahorro promedio."/></div></div><div className="insight-list"><div className="insight-row"><span>Capacidad mensual estimada</span><strong className={financeAnalysis.averageNet>=0?'positive':'negative'}>{money(Math.max(financeAnalysis.averageNet,0))}</strong></div><div className="insight-row"><span>Meses para completar todo</span><strong>{financeAnalysis.averageNet>0 ? Math.ceil(allocatedSavingsGoals.reduce((s,g)=>s+g.remaining,0)/financeAnalysis.averageNet) : '—'}</strong></div><div className="insight-row"><span>Meta prioritaria</span><strong>{allocatedSavingsGoals[0]?.name||'Sin meta'}</strong></div><div className="insight-row"><span>Progreso global</span><strong>{allocatedSavingsGoals.reduce((s,g)=>s+Number(g.target||0),0)>0 ? `${((allocatedSavingsGoals.reduce((s,g)=>s+g.allocated,0)/allocatedSavingsGoals.reduce((s,g)=>s+Number(g.target||0),0))*100).toFixed(1)}%` : '0%'}</strong></div></div></article>
+        </div>
+        <form className="category-form goals-form" onSubmit={saveSavingsGoal}><label className="grow">Nombre de la meta<input value={goalForm.name} onChange={e=>setGoalForm({...goalForm,name:e.target.value})} placeholder="Ej. Fondo de emergencia" required /></label><label>Monto objetivo<input type="number" min="0" step="0.01" value={goalForm.target} onChange={e=>setGoalForm({...goalForm,target:e.target.value})} placeholder="0,00" required /></label><label>Prioridad<input type="number" min="1" step="1" value={goalForm.priority} onChange={e=>setGoalForm({...goalForm,priority:e.target.value})} /></label><button type="submit"><Plus/> Agregar meta</button></form>
+        <div className="goal-grid">{allocatedSavingsGoals.map(goal=><article className="goal-card" key={goal.id}><header><div><h3>{goal.completed?'✅ ':''}{goal.name}</h3><small>Prioridad {goal.priority} · Objetivo {money(goal.target)}</small></div><div className="goal-actions"><button className="ghost" type="button" onClick={()=>moveSavingsGoal(goal.id,-1)}>↑</button><button className="ghost" type="button" onClick={()=>moveSavingsGoal(goal.id,1)}>↓</button><button className="ghost danger" type="button" onClick={()=>removeSavingsGoal(goal.id)}><Trash2/></button></div></header><div className="goal-progress"><div style={{width:`${goal.progress}%`}}></div></div><div className="goal-values"><span>Asignado <b>{money(goal.allocated)}</b></span><span>{goal.progress.toFixed(1)}%</span><span>Falta <b>{money(goal.remaining)}</b></span></div></article>)}{!allocatedSavingsGoals.length&&<><div className="empty-card">Todavía no existen metas de ahorro.</div><div className="goal-empty-advice"><article><b>Fondo de emergencia</b><span>Una primera meta útil es cubrir entre tres y seis meses de gastos habituales.</span></article><article><b>Objetivo concreto</b><span>Definir nombre, monto y prioridad facilita medir el progreso y mantener constancia.</span></article><article><b>Aporte mensual</b><span>Reservar una cantidad fija al cobrar ayuda a avanzar antes de realizar otros gastos.</span></article></div></>}</div>
+      </section>}
 
       {tab === 'analysis' && <>
         <section className="kpis extended" style={{"--card-cursor":"help"}}>
-          <article title="Suma de los promedios mensuales de las categorías de ingreso actualmente seleccionadas en la tabla. Cada categoría se promedia únicamente sobre sus meses activos."><span>Ingreso mensual promedio</span><strong className="positive">{money(selectedIncomeTotal)}</strong><TrendingUp /><small>{selectedIncomeAnalysis.length} categorías seleccionadas</small></article>
-          <article title="Suma de los promedios mensuales de las categorías de egreso actualmente seleccionadas en la tabla. No incluye el margen adicional del 20% ni los aportes enviados a ahorros."><span>Egreso mensual promedio</span><strong className="negative">{money(selectedExpenseAverageTotal)}</strong><TrendingDown /><small>{selectedReserveExpenses.length} categorías seleccionadas · sin considerar ahorros</small></article>
-          <article title="Capacidad mensual de ahorro calculada con las categorías seleccionadas. Se obtiene restando el egreso mensual promedio seleccionado al ingreso mensual promedio seleccionado."><span>Capacidad mensual de ahorro</span><strong className={selectedSavingsCapacity >= 0 ? 'positive' : 'negative'}>{money(selectedSavingsCapacity)}</strong><CircleDollarSign /><small>{selectedSavingsRate.toFixed(1)}% del ingreso seleccionado</small></article>
-          <article title="Monto recomendado para cubrir tres meses de los egresos promedio seleccionados. Se calcula multiplicando el egreso mensual promedio seleccionado por 3."><span>Fondo de emergencia sugerido</span><strong>{money(selectedEmergencyFund)}</strong><WalletCards /><small>3 meses de egresos seleccionados</small></article>
-          <article title="Suma del dinero sugerido para reservar únicamente en las categorías seleccionadas. Cada categoría usa su promedio mensual activo más un 20% de margen."><span>Presupuesto mensual seleccionado</span><strong>{money(selectedReserveTotal)}</strong><FolderCog /><small>{selectedReserveExpenses.length} categorías incluidas</small></article>
-          <article title="Compara el promedio de egresos de los últimos tres meses con el promedio histórico. Un porcentaje positivo indica que los gastos recientes aumentaron."><span>Tendencia reciente de gastos</span><strong className={financeAnalysis.expenseTrend <= 0 ? 'positive' : 'negative'}>{financeAnalysis.expenseTrend >= 0 ? '+' : ''}{financeAnalysis.expenseTrend.toFixed(1)}%</strong><TrendingDown /><small>Últimos 3 meses contra promedio histórico</small></article>
+          <article><CardHelp text="Suma de los promedios mensuales de las categorías de ingreso actualmente seleccionadas en la tabla. Cada categoría se promedia únicamente sobre sus meses activos." /><span>Ingreso mensual promedio</span><strong className="positive">{money(selectedIncomeTotal)}</strong><TrendingUp /><small>{selectedIncomeAnalysis.length} categorías seleccionadas</small></article>
+          <article><CardHelp text="Suma de los promedios mensuales de las categorías de egreso actualmente seleccionadas en la tabla. No incluye el margen adicional del 20% ni los aportes enviados a ahorros." /><span>Egreso mensual promedio</span><strong className="negative">{money(selectedExpenseAverageTotal)}</strong><TrendingDown /><small>{selectedReserveExpenses.length} categorías seleccionadas · sin considerar ahorros</small></article>
+          <article><CardHelp text="Capacidad mensual de ahorro calculada con las categorías seleccionadas. Se obtiene restando el egreso mensual promedio seleccionado al ingreso mensual promedio seleccionado." /><span>Capacidad mensual de ahorro</span><strong className={selectedSavingsCapacity >= 0 ? 'positive' : 'negative'}>{money(selectedSavingsCapacity)}</strong><CircleDollarSign /><small>{selectedSavingsRate.toFixed(1)}% del ingreso seleccionado</small></article>
+          <article><CardHelp text="Monto recomendado para cubrir tres meses de los egresos promedio seleccionados. Se calcula multiplicando el egreso mensual promedio seleccionado por 3." /><span>Fondo de emergencia sugerido</span><strong>{money(selectedEmergencyFund)}</strong><WalletCards /><small>3 meses de egresos seleccionados</small></article>
+          <article><CardHelp text="Suma del dinero sugerido para reservar únicamente en las categorías seleccionadas. Cada categoría usa su promedio mensual activo más un 20% de margen." /><span>Presupuesto mensual seleccionado</span><strong>{money(selectedReserveTotal)}</strong><FolderCog /><small>{selectedReserveExpenses.length} categorías incluidas</small></article>
+          <article><CardHelp text="Compara el promedio de egresos de los últimos tres meses con el promedio histórico. Un porcentaje positivo indica que los gastos recientes aumentaron." /><span>Tendencia reciente de gastos</span><strong className={financeAnalysis.expenseTrend <= 0 ? 'positive' : 'negative'}>{financeAnalysis.expenseTrend >= 0 ? '+' : ''}{financeAnalysis.expenseTrend.toFixed(1)}%</strong><TrendingDown /><small>Últimos 3 meses contra promedio histórico</small></article>
         </section>
 
         <section className="charts dashboard-grid">
@@ -1382,9 +1889,9 @@ export default function App() {
 
       {tab === 'big-expenses' && <>
         <section className="kpis compact-kpis category-kpis">
-          <article title="Suma de todos los egresos individuales, excluyendo movimientos de ahorro."><span>Total histórico de gastos</span><strong className="negative">{money(bigExpenses.reduce((s, x) => s + Number(x.amount), 0))}</strong><TrendingDown /><small>{bigExpenses.length} movimientos visibles</small></article>
-          <article title="Gasto individual de mayor importe registrado."><span>Mayor gasto registrado</span><strong className="negative">{money(bigExpenses[0]?.amount || 0)}</strong><ReceiptText /><small>{bigExpenses[0]?.description || 'Sin datos'}</small></article>
-          <article title="Promedio de los gastos individuales actualmente visibles."><span>Promedio por gasto</span><strong>{money(bigExpenses.length ? bigExpenses.reduce((s, x) => s + Number(x.amount), 0) / bigExpenses.length : 0)}</strong><CircleDollarSign /><small>Según filtros aplicados</small></article>
+          <article><CardHelp text="Suma de todos los egresos individuales, excluyendo movimientos de ahorro." /><span>Total histórico de gastos</span><strong className="negative">{money(bigExpenses.reduce((s, x) => s + Number(x.amount), 0))}</strong><TrendingDown /><small>{bigExpenses.length} movimientos visibles</small></article>
+          <article><CardHelp text="Gasto individual de mayor importe registrado." /><span>Mayor gasto registrado</span><strong className="negative">{money(bigExpenses[0]?.amount || 0)}</strong><ReceiptText /><small>{bigExpenses[0]?.description || 'Sin datos'}</small></article>
+          <article><CardHelp text="Promedio de los gastos individuales actualmente visibles." /><span>Promedio por gasto</span><strong>{money(bigExpenses.length ? bigExpenses.reduce((s, x) => s + Number(x.amount), 0) / bigExpenses.length : 0)}</strong><CircleDollarSign /><small>Según filtros aplicados</small></article>
         </section>
 
         <section className="panel table-panel">
@@ -1420,13 +1927,13 @@ export default function App() {
 
       {tab === 'savings' && <>
         <section className="kpis extended compact-kpis">
-          <article title="Dinero actualmente acumulado en ahorros. Se calcula sumando todos los aportes y restando todos los retiros."><span>Saldo en ahorros</span><strong className="positive">{money(savingsBalance)}</strong><PiggyBank /><small>Disponible en el fondo</small></article>
-          <article title="Suma histórica de todos los aportes realizados al fondo de ahorro."><span>Total guardado</span><strong>{money(savingsDeposits)}</strong><Download /><small>{savingsMovements.filter(x => savingsKind(x) === 'deposit').length} aportes</small></article>
-          <article title="Suma histórica de todos los retiros realizados desde el fondo de ahorro."><span>Total retirado</span><strong className="negative">{money(savingsWithdrawals)}</strong><Upload /><small>{savingsMovements.filter(x => savingsKind(x) === 'withdrawal').length} retiros</small></article>
+          <article><CardHelp text="Dinero actualmente acumulado en ahorros. Se calcula sumando todos los aportes y restando todos los retiros." /><span>Saldo en ahorros</span><strong className="positive">{money(savingsBalance)}</strong><PiggyBank /><small>Disponible en el fondo</small></article>
+          <article><CardHelp text="Suma histórica de todos los aportes realizados al fondo de ahorro." /><span>Total guardado</span><strong>{money(savingsDeposits)}</strong><Download /><small>{savingsMovements.filter(x => savingsKind(x) === 'deposit').length} aportes</small></article>
+          <article><CardHelp text="Suma histórica de todos los retiros realizados desde el fondo de ahorro." /><span>Total retirado</span><strong className="negative">{money(savingsWithdrawals)}</strong><Upload /><small>{savingsMovements.filter(x => savingsKind(x) === 'withdrawal').length} retiros</small></article>
         </section>
 
-        <section className="entry-grid">
-          <article className="panel entry-card">
+        <section className="entry-grid savings-entry-section">
+          <article className="panel entry-card savings-entry-card">
             <div className="entry-icon"><PiggyBank /></div>
             <h2>Movimiento de ahorros</h2>
             <p>Guardar dinero reduce el saldo disponible. Retirarlo devuelve el dinero al saldo general.</p>
@@ -1554,16 +2061,16 @@ export default function App() {
 
         {dashboardView === 'overview' && <>
           <section className="kpis extended compact-kpis">
-            <article title="Dinero disponible que se arrastra desde el cierre del mes anterior. Desde mayo parte del saldo final real de abril y continúa acumulándose mes a mes."><span>Saldo mes anterior</span><strong>{money(openingBalance)}</strong><WalletCards /><small>{month === DATA_START ? 'Mes inicial' : 'Arrastre automático'}</small></article>
-            <article title="Suma de todos los movimientos de tipo ingreso registrados en el mes seleccionado."><span>Ingresos del mes</span><strong className="positive">{money(income)}</strong><ArrowUpCircle /><small>{incomeRows.length} registros</small></article>
-            <article title="Suma de los egresos reales del mes, excluyendo el dinero enviado a ahorros."><span>Egresos del mes</span><strong className="negative">{money(expenseWithoutSavings)}</strong><ArrowDownCircle /><small>{expenseRowsWithoutSavings.length} registros · sin considerar ahorros</small></article>
-            <article title="Dinero enviado al fondo de ahorros durante el mes seleccionado. Se calcula sumando únicamente los movimientos de tipo Guardar en ahorros del período."><span>Dinero enviado a los ahorros</span><strong className="positive">{money(monthlySavingsDeposits)}</strong><PiggyBank /><small>Aportes realizados en {month}</small></article>
-            <article title="Saldo final del mes. Se calcula como saldo anterior + ingresos del mes - egresos del mes - dinero enviado a ahorros + retiros de ahorros."><span>Saldo final disponible</span><strong className={closingBalance >= 0 ? 'positive' : 'negative'}>{money(closingBalance)}</strong><CircleDollarSign /><small>Saldo anterior + ingresos - egresos</small></article>
-            <article title="Resultado del mes sin considerar el saldo anterior. Se calcula como ingresos del mes menos egresos del mes."><span>Resultado propio del mes</span><strong className={monthlyNet >= 0 ? 'positive' : 'negative'}>{money(monthlyNet)}</strong><TrendingUp /><small>Sin contar saldo anterior</small></article>
-            <article title="Porcentaje de los fondos disponibles que quedó sin gastar. Se calcula como saldo final dividido por saldo anterior más ingresos del mes."><span>Porcentaje disponible</span><strong className={savingRate >= 0 ? 'positive' : 'negative'}>{savingRate.toFixed(1)}%</strong><TrendingUp /><small>Sobre fondos disponibles</small></article>
-            <article title="Promedio gastado por cada día con egresos, excluyendo los aportes enviados a ahorros."><span>Promedio diario de egresos</span><strong>{money(avgDailyExpense)}</strong><CalendarDays /><small>{daysWithExpense} días con gastos · sin considerar ahorros</small></article>
-            <article title="Movimiento individual de egreso más alto del mes, excluyendo los aportes enviados a ahorros."><span>Mayor gasto</span><strong className="negative">{money(biggestExpense?.amount || 0)}</strong><TrendingDown /><small>{biggestExpense?.description || 'Sin gastos'} · sin considerar ahorros</small></article>
-            <article title="Categoría con mayor gasto del mes, excluyendo los aportes enviados a ahorros."><span>Categoría con mayor gasto</span><strong className="negative">{money(topExpenseCategory?.value || 0)}</strong><FolderCog /><small>{topExpenseCategory?.name || 'Sin datos'} · {expenseConcentration.toFixed(1)}% del total · sin considerar ahorros</small></article>
+            <article><CardHelp text="Dinero disponible que se arrastra desde el cierre del mes anterior. Desde mayo parte del saldo final real de abril y continúa acumulándose mes a mes." /><span>Saldo mes anterior</span><strong>{money(openingBalance)}</strong><WalletCards /><small>{month === DATA_START ? 'Mes inicial' : 'Arrastre automático'}</small></article>
+            <article><CardHelp text="Suma de todos los movimientos de tipo ingreso registrados en el mes seleccionado." /><span>Ingresos del mes</span><strong className="positive">{money(income)}</strong><ArrowUpCircle /><small>{incomeRows.length} registros</small></article>
+            <article><CardHelp text="Suma de los egresos reales del mes, excluyendo el dinero enviado a ahorros." /><span>Egresos del mes</span><strong className="negative">{money(expenseWithoutSavings)}</strong><ArrowDownCircle /><small>{expenseRowsWithoutSavings.length} registros · sin considerar ahorros</small></article>
+            <article><CardHelp text="Dinero enviado al fondo de ahorros durante el mes seleccionado. Se calcula sumando únicamente los movimientos de tipo Guardar en ahorros del período." /><span>Dinero enviado a los ahorros</span><strong className="positive">{money(monthlySavingsDeposits)}</strong><PiggyBank /><small>Aportes realizados en {month}</small></article>
+            <article><CardHelp text="Saldo final del mes. Se calcula como saldo anterior + ingresos del mes - egresos del mes - dinero enviado a ahorros + retiros de ahorros." /><span>Saldo final disponible</span><strong className={closingBalance >= 0 ? 'positive' : 'negative'}>{money(closingBalance)}</strong><CircleDollarSign /><small>Saldo anterior + ingresos - egresos</small></article>
+            <article><CardHelp text="Resultado del mes sin considerar el saldo anterior. Se calcula como ingresos del mes menos egresos del mes." /><span>Resultado propio del mes</span><strong className={monthlyNet >= 0 ? 'positive' : 'negative'}>{money(monthlyNet)}</strong><TrendingUp /><small>Sin contar saldo anterior</small></article>
+            <article><CardHelp text="Porcentaje de los fondos disponibles que quedó sin gastar. Se calcula como saldo final dividido por saldo anterior más ingresos del mes." /><span>Porcentaje disponible</span><strong className={savingRate >= 0 ? 'positive' : 'negative'}>{savingRate.toFixed(1)}%</strong><TrendingUp /><small>Sobre fondos disponibles</small></article>
+            <article><CardHelp text="Promedio gastado por cada día con egresos, excluyendo los aportes enviados a ahorros." /><span>Promedio diario de egresos</span><strong>{money(avgDailyExpense)}</strong><CalendarDays /><small>{daysWithExpense} días con gastos · sin considerar ahorros</small></article>
+            <article><CardHelp text="Movimiento individual de egreso más alto del mes, excluyendo los aportes enviados a ahorros." /><span>Mayor gasto</span><strong className="negative">{money(biggestExpense?.amount || 0)}</strong><TrendingDown /><small>{biggestExpense?.description || 'Sin gastos'} · sin considerar ahorros</small></article>
+            <article><CardHelp text="Categoría con mayor gasto del mes, excluyendo los aportes enviados a ahorros." /><span>Categoría con mayor gasto</span><strong className="negative">{money(topExpenseCategory?.value || 0)}</strong><FolderCog /><small>{topExpenseCategory?.name || 'Sin datos'} · {expenseConcentration.toFixed(1)}% del total · sin considerar ahorros</small></article>
           </section>
 
           <section className="charts dashboard-grid dashboard-wide-grid">
@@ -1590,37 +2097,33 @@ export default function App() {
 
         {dashboardView === 'expenses' && <>
           <section className="kpis compact-kpis category-kpis">
-            <article title="Suma de todos los egresos reales del mes seleccionado, excluyendo aportes a ahorros."><span>Total de egresos</span><strong className="negative">{money(expenseWithoutSavings)}</strong><TrendingDown /><small>{expenseRowsWithoutSavings.length} movimientos · sin considerar ahorros</small></article>
-            <article title="Monto promedio de cada egreso real del mes, excluyendo aportes a ahorros."><span>Promedio por movimiento</span><strong>{money(expenseRowsWithoutSavings.length ? expenseWithoutSavings / expenseRowsWithoutSavings.length : 0)}</strong><CircleDollarSign /><small>Ticket promedio · sin considerar ahorros</small></article>
-            <article title="Categoría que acumuló el mayor monto de egresos durante el mes seleccionado."><span>Mayor categoría</span><strong className="negative">{money(topExpenseCategory?.value || 0)}</strong><TrendingDown /><small>{topExpenseCategory?.name || 'Sin datos'}</small></article>
+            <article><CardHelp text="Suma de todos los egresos reales del mes seleccionado, excluyendo aportes a ahorros." /><span>Total de egresos</span><strong className="negative">{money(expenseWithoutSavings)}</strong><TrendingDown /><small>{expenseRowsWithoutSavings.length} movimientos · sin considerar ahorros</small></article>
+            <article><CardHelp text="Monto promedio de cada egreso real del mes, excluyendo aportes a ahorros." /><span>Promedio por movimiento</span><strong>{money(expenseRowsWithoutSavings.length ? expenseWithoutSavings / expenseRowsWithoutSavings.length : 0)}</strong><CircleDollarSign /><small>Ticket promedio · sin considerar ahorros</small></article>
+            <article><CardHelp text="Categoría que acumuló el mayor monto de egresos durante el mes seleccionado." /><span>Mayor categoría</span><strong className="negative">{money(topExpenseCategory?.value || 0)}</strong><TrendingDown /><small>{topExpenseCategory?.name || 'Sin datos'}</small></article>
           </section>
           <CategoryBreakdown title="Egresos desglosados por categoría" rows={expenseRows} type="expense" />
         </>}
 
         {dashboardView === 'incomes' && <>
           <section className="kpis compact-kpis category-kpis">
-            <article title="Suma de todos los ingresos del mes seleccionado, sin incluir retiros desde ahorros."><span>Total de ingresos</span><strong className="positive">{money(income)}</strong><TrendingUp /><small>{incomeRows.length} movimientos</small></article>
-            <article title="Monto promedio de cada ingreso del mes. Se calcula dividiendo el total de ingresos por la cantidad de movimientos."><span>Promedio por movimiento</span><strong>{money(incomeRows.length ? income / incomeRows.length : 0)}</strong><CircleDollarSign /><small>Ingreso promedio</small></article>
-            <article title="Categoría que acumuló el mayor monto de ingresos durante el mes seleccionado."><span>Mayor categoría</span><strong className="positive">{money(topIncomeCategory?.value || 0)}</strong><TrendingUp /><small>{topIncomeCategory?.name || 'Sin datos'}</small></article>
+            <article><CardHelp text="Suma de todos los ingresos del mes seleccionado, sin incluir retiros desde ahorros." /><span>Total de ingresos</span><strong className="positive">{money(income)}</strong><TrendingUp /><small>{incomeRows.length} movimientos</small></article>
+            <article><CardHelp text="Monto promedio de cada ingreso del mes. Se calcula dividiendo el total de ingresos por la cantidad de movimientos." /><span>Promedio por movimiento</span><strong>{money(incomeRows.length ? income / incomeRows.length : 0)}</strong><CircleDollarSign /><small>Ingreso promedio</small></article>
+            <article><CardHelp text="Categoría que acumuló el mayor monto de ingresos durante el mes seleccionado." /><span>Mayor categoría</span><strong className="positive">{money(topIncomeCategory?.value || 0)}</strong><TrendingUp /><small>{topIncomeCategory?.name || 'Sin datos'}</small></article>
           </section>
           <CategoryBreakdown title="Ingresos desglosados por categoría" rows={incomeRows} type="income" />
         </>}
       </>}
 
       {tab === 'cargar' && <section className="entry-grid">
-        <article className="panel entry-card income-card"><div className="entry-icon"><ArrowUpCircle /></div><h2>Cargar ingreso</h2><p>Registrar sueldos, rendimientos, préstamos devueltos u otros ingresos.</p><div className="category-preview">{categories.filter(c => c.type === 'income').slice(0, 8).map(c => <span key={c.id}>{c.name}</span>)}</div><button onClick={() => openNew('income')}><Plus /> Nuevo ingreso</button></article>
-        <article className="panel entry-card expense-card"><div className="entry-icon"><ArrowDownCircle /></div><h2>Cargar egreso</h2><p>Registrar compras, servicios, viajes, cuotas y cualquier otro gasto.</p><div className="category-preview">{categories.filter(c => c.type === 'expense').slice(0, 8).map(c => <span key={c.id}>{c.name}</span>)}</div><button onClick={() => openNew('expense')}><Plus /> Nuevo egreso</button></article>
-        <article className="panel recent-card"><div className="panel-title"><h3>Últimos movimientos</h3><span>Actividad reciente</span></div>{movements.slice(0, 8).map(m => <div className="recent-row" key={m.id}><div><b>{m.description}</b><small>{m.categories?.name} · {m.date?.split('-').reverse().join('/')}</small></div><strong className={m.type === 'income' ? 'positive' : 'negative'}>{m.type === 'income' ? '+' : '-'}{money(m.amount)}</strong></div>)}</article>
+        <article className="panel entry-card income-card"><CardHelp text="Acceso rápido para registrar un nuevo ingreso y asignarlo a una cuenta y categoría." /><div className="entry-icon"><ArrowUpCircle /></div><h2>Cargar ingreso</h2><p>Registrar sueldos, rendimientos, préstamos devueltos u otros ingresos.</p><div className="category-preview">{categories.filter(c => c.type === 'income').slice(0, 8).map(c => <span key={c.id}>{c.name}</span>)}</div><button onClick={() => openNew('income')}><Plus /> Nuevo ingreso</button></article>
+        <article className="panel entry-card expense-card"><CardHelp text="Acceso rápido para registrar un nuevo egreso y asignarlo a una cuenta y categoría." /><div className="entry-icon"><ArrowDownCircle /></div><h2>Cargar egreso</h2><p>Registrar compras, servicios, viajes, cuotas y cualquier otro gasto.</p><div className="category-preview">{categories.filter(c => c.type === 'expense').slice(0, 8).map(c => <span key={c.id}>{c.name}</span>)}</div><button onClick={() => openNew('expense')}><Plus /> Nuevo egreso</button></article>
+        <article className="panel recent-card"><CardHelp text="Resume la actividad financiera más reciente para revisar rápidamente ingresos y egresos cargados." /><div className="panel-title"><h3>Últimos movimientos</h3><span>Actividad reciente</span></div>{movements.slice(0, 8).map(m => <div className="recent-row" key={m.id}><div><b>{m.description}</b><small>{m.categories?.name} · {m.date?.split('-').reverse().join('/')}</small></div><strong className={m.type === 'income' ? 'positive' : 'negative'}>{m.type === 'income' ? '+' : '-'}{money(m.amount)}</strong></div>)}</article>
       </section>}
 
       {tab === 'income' && <TransactionsTable rows={incomeRows} title="Ingresos" type="income" search={search} setSearch={setSearch} onEdit={m => { setEditing(m); setNewType('income'); setModal(true) }} onDelete={remove} />}
       {tab === 'expense' && <TransactionsTable rows={expenseRows} title="Egresos" type="expense" search={search} setSearch={setSearch} onEdit={m => { setEditing(m); setNewType('expense'); setModal(true) }} onDelete={remove} />}
 
       {tab === 'settings' && <section className="panel account-settings">
-        <div className="panel-title"><div><h3>Personalización</h3><span>Color principal y atajos de teclado</span></div></div>
-        <div className="theme-picker">{['blue','green','purple','orange','gray'].map(x=><button type="button" key={x} className={`theme-option theme-${x}-btn ${theme===x?'active':''}`} onClick={()=>setTheme(x)} title={`Tema ${x}`}/>)}</div>
-        <div className="shortcut-grid" style={{margin:'16px 0 22px'}}><div className="shortcut"><span>Nuevo ingreso</span><kbd>I</kbd></div><div className="shortcut"><span>Nuevo egreso</span><kbd>E</kbd></div><div className="shortcut"><span>Ir a cargar</span><kbd>N</kbd></div><div className="shortcut"><span>Abrir filtros</span><kbd>/</kbd></div></div>
-
         <div className="panel-title">
           <div><h3>Configuración de cuenta</h3><span>Administrar los datos de acceso y la sesión actual</span></div>
         </div>
@@ -1653,7 +2156,33 @@ export default function App() {
         </form>
       </section>}
 
-      {tab === 'control' && <section className="panel control-card"><div className="section-icon"><FolderCog /></div><h2>Control de categorías</h2><p>Las categorías de ingresos y egresos se administran por separado y aparecen automáticamente en los formularios de carga.</p><CategoryForm onAdd={addCategory} /><div className="category-columns"><div><h3>Ingresos ({categories.filter(c => c.type === 'income').length})</h3>{categories.filter(c => c.type === 'income').map(c => <div className="category-row" key={c.id}><span>{c.name}</span><button className="ghost danger" onClick={() => removeCategory(c)}><Trash2 /></button></div>)}</div><div><h3>Egresos ({categories.filter(c => c.type === 'expense').length})</h3>{categories.filter(c => c.type === 'expense').map(c => <div className="category-row" key={c.id}><span>{c.name}</span><button className="ghost danger" onClick={() => removeCategory(c)}><Trash2 /></button></div>)}</div></div></section>}
+      {tab === 'control' && <section className="panel control-card">
+        <div className="section-icon"><FolderCog /></div>
+        <h2>Control y personalización</h2>
+        <p>Administrar categorías, apariencia general y atajos de teclado de la aplicación.</p>
+
+        <div className="theme-section">
+          <div className="theme-block">
+            <h4>Color principal</h4>
+            <p>Define el color de botones, bordes activos e indicadores.</p>
+            <div className="theme-picker">{['blue','green','purple','orange','gray'].map(x=><button type="button" key={x} className={`theme-option theme-${x}-btn ${theme===x?'active':''}`} onClick={()=>setTheme(x)} aria-label={`Usar color ${x}`} />)}</div>
+          </div>
+          <div className="theme-block">
+            <h4>Color de fondo</h4>
+            <p>Permite elegir el tono general de fondo sin modificar la legibilidad de cards y tablas.</p>
+            <div className="background-picker">{[['navy','Azul oscuro'],['slate','Pizarra'],['black','Negro'],['blue','Azul profundo'],['plum','Ciruela']].map(([value,label])=><button type="button" key={value} className={`background-option background-${value}-btn ${backgroundTheme===value?'active':''}`} onClick={()=>setBackgroundTheme(value)} aria-label={`Usar fondo ${label}`}><span>{label}</span></button>)}</div>
+          </div>
+          <div className="theme-block">
+            <h4>Atajos de teclado</h4>
+            <div className="shortcut-grid"><div className="shortcut"><span>Nuevo ingreso</span><kbd>I</kbd></div><div className="shortcut"><span>Nuevo egreso</span><kbd>E</kbd></div><div className="shortcut"><span>Ir a cargar</span><kbd>N</kbd></div><div className="shortcut"><span>Abrir filtros</span><kbd>/</kbd></div></div>
+          </div>
+        </div>
+
+        <h2>Control de categorías</h2>
+        <p>Las categorías de ingresos y egresos se administran por separado y aparecen automáticamente en los formularios de carga.</p>
+        <CategoryForm onAdd={addCategory} />
+        <div className="category-columns"><div><h3>Ingresos ({categories.filter(c => c.type === 'income').length})</h3>{categories.filter(c => c.type === 'income').map(c => <div className="category-row" key={c.id}><span>{c.name}</span><button className="ghost danger" onClick={() => removeCategory(c)}><Trash2 /></button></div>)}</div><div><h3>Egresos ({categories.filter(c => c.type === 'expense').length})</h3>{categories.filter(c => c.type === 'expense').map(c => <div className="category-row" key={c.id}><span>{c.name}</span><button className="ghost danger" onClick={() => removeCategory(c)}><Trash2 /></button></div>)}</div></div>
+      </section>}
       </main>
     </div>
     <MovementModal open={modal} onClose={() => { setModal(false); setEditing(null) }} onSave={save} accounts={accounts} categories={categories} editing={editing} defaultType={newType} />
