@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ArrowDownCircle, ArrowUpCircle, CalendarDays, CircleDollarSign, FolderCog,
   LayoutDashboard, LogOut, Pencil, Plus, RefreshCw, Search, Settings, Settings2, Trash2,
@@ -216,7 +216,7 @@ export default function App() {
   const [editing, setEditing] = useState(null)
   const [notice, setNotice] = useState('')
   const [tab, setTab] = useState('home')
-  const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem('finance_sidebar_open') !== 'false')
+  const [sidebarOpen, setSidebarOpen] = useState(true)
   const [monthlyOpen, setMonthlyOpen] = useState(true)
   const [dashboardView, setDashboardView] = useState('overview')
   const [filtersOpen, setFiltersOpen] = useState(false)
@@ -228,24 +228,10 @@ export default function App() {
     const [y,m] = monthKey().split('-').map(Number)
     return `${m === 1 ? y-1 : y}-${String(m === 1 ? 12 : m-1).padStart(2,'0')}`
   })
-  const [theme, setTheme] = useState(() => localStorage.getItem('finance_theme') || 'blue')
-  const [backgroundTheme, setBackgroundTheme] = useState(() => localStorage.getItem('finance_background_theme') || 'navy')
-  const [selectedReserveCategories, setSelectedReserveCategories] = useState(() => {
-    try {
-      const saved = localStorage.getItem('finance_selected_reserve_categories')
-      return saved ? JSON.parse(saved) : null
-    } catch {
-      return null
-    }
-  })
-  const [selectedIncomeCategories, setSelectedIncomeCategories] = useState(() => {
-    try {
-      const saved = localStorage.getItem('finance_selected_income_categories')
-      return saved ? JSON.parse(saved) : null
-    } catch {
-      return null
-    }
-  })
+  const [theme, setTheme] = useState('blue')
+  const [backgroundTheme, setBackgroundTheme] = useState('navy')
+  const [selectedReserveCategories, setSelectedReserveCategories] = useState(null)
+  const [selectedIncomeCategories, setSelectedIncomeCategories] = useState(null)
   const [savingsForm, setSavingsForm] = useState({
     kind: 'deposit',
     date: new Date().toISOString().slice(0, 10),
@@ -254,14 +240,7 @@ export default function App() {
   })
   const [bigExpenseSearch, setBigExpenseSearch] = useState('')
   const [bigExpenseCategory, setBigExpenseCategory] = useState('all')
-  const [savingsGoals, setSavingsGoals] = useState(() => {
-    try {
-      const saved = localStorage.getItem('finance_savings_goals')
-      return saved ? JSON.parse(saved) : []
-    } catch {
-      return []
-    }
-  })
+  const [savingsGoals, setSavingsGoals] = useState([])
   const [goalForm, setGoalForm] = useState({
     name: '',
     target: '',
@@ -278,7 +257,7 @@ export default function App() {
   const [accountForm, setAccountForm] = useState({ id: null, name: '', initial_balance: '' })
   const [transferForm, setTransferForm] = useState({ from_account_id: '', to_account_id: '', amount: '', date: new Date().toISOString().slice(0, 10), description: '' })
   const [confirmDialog, setConfirmDialog] = useState(null)
-  const importFileRef = useRef(null)
+  const [preferencesLoaded, setPreferencesLoaded] = useState(false)
 
   useEffect(() => {
     if (!configured) {
@@ -308,11 +287,31 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    const [y, m] = monthKey().split('-').map(Number)
+    const previousMonth = `${m === 1 ? y - 1 : y}-${String(m === 1 ? 12 : m - 1).padStart(2, '0')}`
+
     setAccounts([])
     setCategories([])
     setMovements([])
     setSearch('')
     setNotice('')
+    setFilters(emptyFilters)
+    setFilterDraft(emptyFilters)
+    setComparisonMonth(previousMonth)
+    setSelectedIncomeCategories(null)
+    setSelectedReserveCategories(null)
+    setSavingsGoals([])
+    setSavingsForm({ kind: 'deposit', date: new Date().toISOString().slice(0, 10), amount: '', description: '' })
+    setGoalForm({ name: '', target: '', priority: 1 })
+    setBigExpenseSearch('')
+    setBigExpenseCategory('all')
+    setNotificationsOpen(false)
+    setFiltersOpen(false)
+    setPreferencesLoaded(false)
+    setTheme('blue')
+    setBackgroundTheme('navy')
+    setSidebarOpen(true)
+
     if (session?.user?.id) loadAll()
   }, [session?.user?.id])
 
@@ -322,18 +321,33 @@ export default function App() {
   }, [session])
 
   useEffect(() => {
-    localStorage.setItem('finance_sidebar_open', String(sidebarOpen))
-  }, [sidebarOpen])
-
-  useEffect(() => {
-    localStorage.setItem('finance_theme', theme)
     document.documentElement.dataset.financeTheme = theme
   }, [theme])
 
   useEffect(() => {
-    localStorage.setItem('finance_background_theme', backgroundTheme)
     document.documentElement.dataset.financeBackground = backgroundTheme
   }, [backgroundTheme])
+
+  useEffect(() => {
+    if (!configured || !session?.user?.id || !preferencesLoaded) return
+
+    const timer = window.setTimeout(async () => {
+      const payload = {
+        user_id: session.user.id,
+        theme,
+        background_theme: backgroundTheme,
+        sidebar_open: sidebarOpen,
+        selected_income_categories: selectedIncomeCategories,
+        selected_reserve_categories: selectedReserveCategories,
+        savings_goals: savingsGoals,
+        updated_at: new Date().toISOString()
+      }
+      const { error } = await supabase.from('user_settings').upsert(payload, { onConflict: 'user_id' })
+      if (error) setNotice(`No se pudieron guardar las preferencias: ${error.message}`)
+    }, 350)
+
+    return () => window.clearTimeout(timer)
+  }, [configured, session?.user?.id, preferencesLoaded, theme, backgroundTheme, sidebarOpen, selectedIncomeCategories, selectedReserveCategories, savingsGoals])
 
   useEffect(() => {
     const onKey = (e) => {
@@ -401,7 +415,7 @@ export default function App() {
         supabase.from('accounts').select('*').eq('user_id', currentUserId).order('name'),
         supabase.from('categories').select('*').eq('user_id', currentUserId).order('type').order('name'),
         supabase.from('transactions').select('*,accounts(name),categories(name)').eq('user_id', currentUserId).order('date', { ascending: false }),
-        supabase.from('user_settings').select('opening_balance_month,opening_balance_amount').eq('user_id', currentUserId).maybeSingle()
+        supabase.from('user_settings').select('opening_balance_month,opening_balance_amount,theme,background_theme,sidebar_open,selected_income_categories,selected_reserve_categories,savings_goals').eq('user_id', currentUserId).maybeSingle()
       ])
       if (a.error || c.error || m.error || settingsResult.error) {
         throw new Error(a.error?.message || c.error?.message || m.error?.message || settingsResult.error?.message)
@@ -410,7 +424,7 @@ export default function App() {
       const ownAccounts = (a.data || []).filter(row => row.user_id === currentUserId)
       const ownCategories = (c.data || []).filter(row => row.user_id === currentUserId)
       const ownMovements = (m.data || []).filter(row => row.user_id === currentUserId)
-      const loadedSettings = settingsResult.data || { opening_balance_month: '', opening_balance_amount: 0 }
+      const loadedSettings = settingsResult.data || { opening_balance_month: '', opening_balance_amount: 0, theme: 'blue', background_theme: 'navy', sidebar_open: true, selected_income_categories: null, selected_reserve_categories: null, savings_goals: [] }
 
       setAccounts(ownAccounts)
       setCategories(ownCategories)
@@ -420,6 +434,13 @@ export default function App() {
         opening_balance_month: loadedSettings.opening_balance_month || '',
         opening_balance_amount: loadedSettings.opening_balance_amount ?? ''
       })
+      setTheme(loadedSettings.theme || 'blue')
+      setBackgroundTheme(loadedSettings.background_theme || 'navy')
+      setSidebarOpen(loadedSettings.sidebar_open !== false)
+      setSelectedIncomeCategories(Array.isArray(loadedSettings.selected_income_categories) ? loadedSettings.selected_income_categories : null)
+      setSelectedReserveCategories(Array.isArray(loadedSettings.selected_reserve_categories) ? loadedSettings.selected_reserve_categories : null)
+      setSavingsGoals(Array.isArray(loadedSettings.savings_goals) ? loadedSettings.savings_goals : [])
+      setPreferencesLoaded(true)
       setTransferForm(current => ({
         ...current,
         from_account_id: current.from_account_id || ownAccounts[0]?.id || '',
@@ -557,99 +578,6 @@ export default function App() {
       .reduce((sum, m) => sum + (m.type === 'income' ? Number(m.amount) : -Number(m.amount)), 0)
   }
 
-  const escapeCsv = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`
-
-  const exportCsv = () => {
-    const headers = ['fecha', 'tipo', 'concepto', 'monto', 'cuenta', 'categoria', 'observaciones']
-    const rows = movements.filter(m => !isTransferMovement(m)).map(m => [
-      m.date,
-      m.type === 'income' ? 'ingreso' : 'egreso',
-      m.description,
-      Number(m.amount),
-      m.accounts?.name || accounts.find(a => a.id === m.account_id)?.name || '',
-      m.categories?.name || '',
-      m.notes || ''
-    ])
-    const csv = [headers, ...rows].map(row => row.map(escapeCsv).join(',')).join('\n')
-    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `mis-finanzas-${new Date().toISOString().slice(0, 10)}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
-  const parseCsvLine = (line) => {
-    const out = []
-    let current = ''
-    let quoted = false
-    for (let i = 0; i < line.length; i += 1) {
-      const char = line[i]
-      if (char === '"' && quoted && line[i + 1] === '"') { current += '"'; i += 1 }
-      else if (char === '"') quoted = !quoted
-      else if (char === ',' && !quoted) { out.push(current); current = '' }
-      else current += char
-    }
-    out.push(current)
-    return out
-  }
-
-  const importCsv = async (event) => {
-    const file = event.target.files?.[0]
-    event.target.value = ''
-    if (!file) return
-    try {
-      const text = (await file.text()).replace(/^\ufeff/, '')
-      const lines = text.split(/\r?\n/).filter(Boolean)
-      if (lines.length < 2) throw new Error('El archivo no contiene movimientos.')
-      const headers = parseCsvLine(lines[0]).map(x => x.trim().toLowerCase())
-      const required = ['fecha', 'tipo', 'concepto', 'monto']
-      if (required.some(key => !headers.includes(key))) throw new Error('El CSV debe contener fecha, tipo, concepto y monto.')
-      const index = Object.fromEntries(headers.map((h, i) => [h, i]))
-      const imported = []
-      for (const line of lines.slice(1)) {
-        const cells = parseCsvLine(line)
-        const typeText = String(cells[index.tipo] || '').trim().toLowerCase()
-        const type = typeText.startsWith('ing') ? 'income' : typeText.startsWith('egr') || typeText.startsWith('gas') ? 'expense' : null
-        const rawAmount = String(cells[index.monto] || '').trim().replace(/[^0-9,.-]/g, '')
-        const normalizedAmount = rawAmount.includes(',')
-          ? rawAmount.replace(/\./g, '').replace(',', '.')
-          : rawAmount
-        const amount = Number(normalizedAmount)
-        const date = String(cells[index.fecha] || '').trim()
-        if (!type || !amount || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue
-        const accountName = String(cells[index.cuenta] || '').trim().toLowerCase()
-        const categoryName = String(cells[index.categoria] || '').trim().toLowerCase()
-        const account = accounts.find(a => a.name.toLowerCase() === accountName) || accounts[0]
-        const category = categories.find(c => c.type === type && c.name.toLowerCase() === categoryName)
-        if (!account) continue
-        imported.push({
-          user_id: session?.user?.id,
-          date,
-          type,
-          description: String(cells[index.concepto] || '').trim() || 'Movimiento importado',
-          amount,
-          account_id: account.id,
-          category_id: category?.id || null,
-          notes: String(cells[index.observaciones] || '').trim() || null
-        })
-      }
-      if (!imported.length) throw new Error('No se encontraron filas válidas para importar.')
-      if (!configured) {
-        const localRows = imported.map(row => ({ ...row, id: crypto.randomUUID(), accounts: { name: accounts.find(a => a.id === row.account_id)?.name }, categories: { name: categories.find(c => c.id === row.category_id)?.name } }))
-        setMovements(current => [...localRows, ...current])
-      } else {
-        const { error } = await supabase.from('transactions').insert(imported)
-        if (error) throw error
-        await loadAll()
-      }
-      setNotice(`${imported.length} movimientos importados correctamente.`)
-    } catch (error) {
-      setNotice(error.message || 'No se pudo importar el archivo.')
-    }
-  }
-
   const openNew = (type) => { setEditing(null); setNewType(type); setModal(true) }
 
   const save = async (form) => {
@@ -774,7 +702,6 @@ export default function App() {
     ].sort((a, b) => a.priority - b.priority || new Date(a.createdAt) - new Date(b.createdAt))
 
     setSavingsGoals(next)
-    localStorage.setItem('finance_savings_goals', JSON.stringify(next))
     setGoalForm({ name: '', target: '', priority: next.length + 1 })
     setNotice('Meta de ahorro agregada.')
   }
@@ -788,8 +715,7 @@ export default function App() {
       onConfirm: () => {
         const next = savingsGoals.filter(item => item.id !== id)
         setSavingsGoals(next)
-        localStorage.setItem('finance_savings_goals', JSON.stringify(next))
-      }
+          }
     })
   }
 
@@ -808,7 +734,6 @@ export default function App() {
       .map((goal, idx) => ({ ...goal, priority: idx + 1 }))
 
     setSavingsGoals(normalized)
-    localStorage.setItem('finance_savings_goals', JSON.stringify(normalized))
   }
 
   const remove = (id) => {
@@ -1118,12 +1043,10 @@ export default function App() {
     setSelectedReserveCategories(current => {
       if (Array.isArray(current)) {
         const valid = current.filter(name => financeAnalysis.expenses.some(x => x.name === name))
-        localStorage.setItem('finance_selected_reserve_categories', JSON.stringify(valid))
         return valid
       }
 
       const defaults = financeAnalysis.expenses.map(x => x.name)
-      localStorage.setItem('finance_selected_reserve_categories', JSON.stringify(defaults))
       return defaults
     })
   }, [financeAnalysis.expenses])
@@ -1153,7 +1076,6 @@ export default function App() {
         ? base.filter(x => x !== name)
         : [...base, name]
 
-      localStorage.setItem('finance_selected_reserve_categories', JSON.stringify(next))
       return next
     })
   }
@@ -1161,12 +1083,10 @@ export default function App() {
   const selectAllReserveCategories = () => {
     const next = financeAnalysis.expenses.map(x => x.name)
     setSelectedReserveCategories(next)
-    localStorage.setItem('finance_selected_reserve_categories', JSON.stringify(next))
   }
 
   const clearReserveCategories = () => {
     setSelectedReserveCategories([])
-    localStorage.setItem('finance_selected_reserve_categories', JSON.stringify([]))
   }
 
   useEffect(() => {
@@ -1175,12 +1095,10 @@ export default function App() {
     setSelectedIncomeCategories(current => {
       if (Array.isArray(current)) {
         const valid = current.filter(name => financeAnalysis.incomes.some(x => x.name === name))
-        localStorage.setItem('finance_selected_income_categories', JSON.stringify(valid))
         return valid
       }
 
       const defaults = financeAnalysis.incomes.map(x => x.name)
-      localStorage.setItem('finance_selected_income_categories', JSON.stringify(defaults))
       return defaults
     })
   }, [financeAnalysis.incomes])
@@ -1211,7 +1129,6 @@ export default function App() {
         ? base.filter(x => x !== name)
         : [...base, name]
 
-      localStorage.setItem('finance_selected_income_categories', JSON.stringify(next))
       return next
     })
   }
@@ -1219,12 +1136,10 @@ export default function App() {
   const selectAllIncomeCategories = () => {
     const next = financeAnalysis.incomes.map(x => x.name)
     setSelectedIncomeCategories(next)
-    localStorage.setItem('finance_selected_income_categories', JSON.stringify(next))
   }
 
   const clearIncomeCategories = () => {
     setSelectedIncomeCategories([])
-    localStorage.setItem('finance_selected_income_categories', JSON.stringify([]))
   }
 
 
@@ -1725,6 +1640,91 @@ export default function App() {
       .table-panel .search.compact{min-width:280px!important}
       @media(max-width:900px){.goals-form{grid-template-columns:1fr!important}.table-panel .search.compact{min-width:0!important;width:100%!important}.app-content{padding:14px!important}}
 
+
+      /* Tablas de análisis: columnas compactas sin desplazamiento horizontal */
+      .analysis-table-panel { overflow:hidden !important; }
+      .analysis-table-panel .analysis-table-wrap {
+        width:100% !important;
+        max-width:100% !important;
+        overflow-x:hidden !important;
+        overflow-y:auto !important;
+      }
+      .analysis-table-panel .analysis-data-table {
+        width:100% !important;
+        min-width:0 !important;
+        max-width:100% !important;
+        table-layout:fixed !important;
+        border-collapse:collapse !important;
+      }
+      .analysis-table-panel .analysis-data-table th,
+      .analysis-table-panel .analysis-data-table td {
+        width:auto !important;
+        min-width:0 !important;
+        max-width:none !important;
+        padding:11px 8px !important;
+        font-size:12px !important;
+        line-height:1.25 !important;
+        white-space:normal !important;
+        overflow-wrap:anywhere !important;
+        word-break:normal !important;
+        vertical-align:middle !important;
+      }
+      .analysis-table-panel .analysis-data-table thead th {
+        font-size:11px !important;
+        color:#91b1d2 !important;
+        font-weight:700 !important;
+      }
+      .analysis-table-panel .analysis-data-table .type-pill {
+        max-width:100% !important;
+        display:inline-flex !important;
+        white-space:normal !important;
+        line-height:1.15 !important;
+        text-align:left !important;
+      }
+      .analysis-table-panel .analysis-data-table input[type="checkbox"] {
+        width:16px !important;
+        height:16px !important;
+        min-height:16px !important;
+        padding:0 !important;
+        margin:0 auto !important;
+        display:block !important;
+      }
+      .analysis-table-panel .priority-badge {
+        display:inline-flex !important;
+        align-items:center !important;
+        gap:4px !important;
+        white-space:nowrap !important;
+        font-size:11px !important;
+      }
+      .analysis-table-panel tfoot td {
+        font-size:12px !important;
+        font-weight:700 !important;
+      }
+      .reserve-analysis-table th:nth-child(1), .reserve-analysis-table td:nth-child(1){width:5%!important;text-align:center!important}
+      .reserve-analysis-table th:nth-child(2), .reserve-analysis-table td:nth-child(2){width:14%!important}
+      .reserve-analysis-table th:nth-child(3), .reserve-analysis-table td:nth-child(3){width:9%!important}
+      .reserve-analysis-table th:nth-child(4), .reserve-analysis-table td:nth-child(4){width:11%!important}
+      .reserve-analysis-table th:nth-child(5), .reserve-analysis-table td:nth-child(5){width:11%!important}
+      .reserve-analysis-table th:nth-child(6), .reserve-analysis-table td:nth-child(6){width:11%!important}
+      .reserve-analysis-table th:nth-child(7), .reserve-analysis-table td:nth-child(7){width:9%!important}
+      .reserve-analysis-table th:nth-child(8), .reserve-analysis-table td:nth-child(8){width:8%!important}
+      .reserve-analysis-table th:nth-child(9), .reserve-analysis-table td:nth-child(9){width:9%!important}
+      .reserve-analysis-table th:nth-child(10), .reserve-analysis-table td:nth-child(10){width:13%!important}
+      .income-analysis-table th:nth-child(1), .income-analysis-table td:nth-child(1){width:5%!important;text-align:center!important}
+      .income-analysis-table th:nth-child(2), .income-analysis-table td:nth-child(2){width:20%!important}
+      .income-analysis-table th:nth-child(3), .income-analysis-table td:nth-child(3){width:11%!important}
+      .income-analysis-table th:nth-child(4), .income-analysis-table td:nth-child(4){width:15%!important}
+      .income-analysis-table th:nth-child(5), .income-analysis-table td:nth-child(5){width:15%!important}
+      .income-analysis-table th:nth-child(6), .income-analysis-table td:nth-child(6){width:15%!important}
+      .income-analysis-table th:nth-child(7), .income-analysis-table td:nth-child(7){width:9%!important}
+      .income-analysis-table th:nth-child(8), .income-analysis-table td:nth-child(8){width:10%!important}
+      @media(max-width:1100px){
+        .analysis-table-panel .analysis-data-table th,
+        .analysis-table-panel .analysis-data-table td{padding:9px 5px!important;font-size:11px!important}
+        .analysis-table-panel .analysis-data-table thead th{font-size:10px!important}
+        .analysis-table-panel .priority-badge{font-size:10px!important;gap:2px!important}
+      }
+
       /* CORRECCIÓN DEFINITIVA: ninguna vista puede centrarse verticalmente */
       .app .app-shell {
         display:flex !important;
@@ -2071,7 +2071,7 @@ export default function App() {
           <article className="panel span2"><div className="panel-title"><div><ChartInfoTitle title="Cuánto reservar por categoría" text="Muestra el promedio mensual de cada categoría seleccionada y la reserva sugerida, que incorpora un margen adicional del 20% para cubrir variaciones." /><span>{selectedReserveExpenses.length} categorías seleccionadas · Total {money(selectedReserveTotal)}</span></div></div><div className="chart tall"><ResponsiveContainer><BarChart data={selectedReserveExpenses.slice(0,12)} layout="vertical" margin={{left:20,right:20}}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis type="number" stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><YAxis type="category" dataKey="name" width={115} stroke="#7890a8" tick={{fontSize:10}}/><Tooltip formatter={(v,name)=>[money(v),name]}/><Legend/><Bar dataKey="averageMonthly" name="Promedio mensual" fill="#38bdf8" radius={[0,5,5,0]}/><Bar dataKey="suggestedReserve" name="Reserva sugerida" fill="#f59e0b" radius={[0,5,5,0]}/></BarChart></ResponsiveContainer></div></article>
         </section>
 
-        <section className="panel table-panel">
+        <section className="panel table-panel analysis-table-panel reserve-analysis-panel">
           <div className="panel-title table-heading">
             <div>
               <h3>Plan mensual de reservas por categoría</h3>
@@ -2086,20 +2086,20 @@ export default function App() {
             </div>
           </div>
 
-          <div className="table-wrap">
-            <table>
+          <div className="table-wrap analysis-table-wrap">
+            <table className="analysis-data-table reserve-analysis-table">
               <thead>
                 <tr>
-                  <th style={{ width: 48 }}>Incluir</th>
+                  <th>Incluir</th>
                   <th>Categoría</th>
-                  <th className="right">Meses activos</th>
-                  <th className="right">Promedio mensual</th>
-                  <th className="right">Máximo mensual</th>
-                  <th className="right">Promedio por gasto</th>
-                  <th className="right">Margen 20%</th>
-                  <th className="right">% seleccionado</th>
+                  <th className="right">Meses<br/>activos</th>
+                  <th className="right">Promedio<br/>mensual</th>
+                  <th className="right">Máximo<br/>mensual</th>
+                  <th className="right">Promedio<br/>por gasto</th>
+                  <th className="right">Margen<br/>20%</th>
+                  <th className="right">% del<br/>total</th>
                   <th>Prioridad</th>
-                  <th className="right">Reservar por mes</th>
+                  <th className="right">Reserva<br/>mensual</th>
                 </tr>
               </thead>
 
@@ -2137,7 +2137,7 @@ export default function App() {
                     <td className="right">{selected ? `${budgetShare.toFixed(1)}%` : '—'}</td>
                     <td>
                       {selected
-                        ? <span title="Prioridad calculada según el peso dentro de las categorías seleccionadas">{priority.icon} {priority.label}</span>
+                        ? <span className="priority-badge" title="Prioridad calculada según el peso dentro de las categorías seleccionadas"><span aria-hidden="true">{priority.icon}</span>{priority.label}</span>
                         : <span>Excluida</span>}
                     </td>
                     <td className="right reserve-amount">{selected ? money(x.suggestedReserve) : '—'}</td>
@@ -2166,7 +2166,7 @@ export default function App() {
           </div>
         </section>
 
-        <section className="panel table-panel">
+        <section className="panel table-panel analysis-table-panel income-analysis-panel">
           <div className="panel-title table-heading">
             <div>
               <h3>Análisis de ingresos por categoría</h3>
@@ -2181,17 +2181,17 @@ export default function App() {
             </div>
           </div>
 
-          <div className="table-wrap">
-            <table>
+          <div className="table-wrap analysis-table-wrap">
+            <table className="analysis-data-table income-analysis-table">
               <thead>
                 <tr>
-                  <th style={{ width: 48 }}>Incluir</th>
+                  <th>Incluir</th>
                   <th>Categoría</th>
-                  <th className="right">Meses activos</th>
-                  <th className="right">Promedio mensual</th>
-                  <th className="right">Máximo mensual</th>
-                  <th className="right">Promedio por ingreso</th>
-                  <th className="right">% seleccionado</th>
+                  <th className="right">Meses<br/>activos</th>
+                  <th className="right">Promedio<br/>mensual</th>
+                  <th className="right">Máximo<br/>mensual</th>
+                  <th className="right">Promedio<br/>por ingreso</th>
+                  <th className="right">% del<br/>total</th>
                   <th>Prioridad</th>
                 </tr>
               </thead>
@@ -2228,7 +2228,7 @@ export default function App() {
                     <td className="right">{selected ? `${selectedShare.toFixed(1)}%` : '—'}</td>
                     <td>
                       {selected
-                        ? <span title="Prioridad calculada según el peso de esta fuente dentro de los ingresos seleccionados">{priority.icon} {priority.label}</span>
+                        ? <span className="priority-badge" title="Prioridad calculada según el peso de esta fuente dentro de los ingresos seleccionados"><span aria-hidden="true">{priority.icon}</span>{priority.label}</span>
                         : <span>Excluida</span>}
                     </td>
                   </tr>
@@ -2527,7 +2527,7 @@ export default function App() {
       {tab === 'control' && <section className="panel control-card">
         <div className="section-icon"><FolderCog /></div>
         <h2>Control y personalización</h2>
-        <p>Administrar configuración financiera, cuentas, transferencias, datos, categorías y apariencia.</p>
+        <p>Administrar configuración financiera, cuentas, transferencias, categorías y apariencia.</p>
 
         <div className="control-sections-grid">
           <form className="control-subpanel" onSubmit={saveFinancialSettings}>
@@ -2543,16 +2543,6 @@ export default function App() {
             <small className="control-note">Este valor reemplaza cualquier saldo hardcodeado y se utiliza como punto de partida para los meses posteriores.</small>
             <button type="submit"><Settings2 /> Guardar saldo inicial</button>
           </form>
-
-          <div className="control-subpanel">
-            <div className="control-subpanel-title"><Download /><div><h3>Importar y exportar</h3><span>Copia de seguridad y carga masiva de movimientos</span></div></div>
-            <div className="data-actions">
-              <button type="button" className="secondary" onClick={exportCsv}><Download /> Exportar CSV</button>
-              <button type="button" onClick={() => importFileRef.current?.click()}><Upload /> Importar CSV</button>
-              <input ref={importFileRef} type="file" accept=".csv,text/csv" onChange={importCsv} hidden />
-            </div>
-            <small className="control-note">El importador admite el mismo formato que genera la exportación: fecha, tipo, concepto, monto, cuenta, categoría y observaciones.</small>
-          </div>
         </div>
 
         <div className="control-subpanel account-management">
