@@ -188,6 +188,13 @@ function CardHelp({ text, label = 'Ver explicación' }) {
   </button>
 }
 
+function InlineHelp({ text, label = 'Ver explicación' }) {
+  return <button type="button" className="inline-help" aria-label={label}>
+    <HelpCircle />
+    <span className="inline-help-tooltip">{text}</span>
+  </button>
+}
+
 function KpiInfoCard({ title, value, detail, icon, tone = '', help }) {
   return <article className={`kpi-info-card ${tone}`}>
     <div className="kpi-info-head">
@@ -2182,11 +2189,16 @@ export default function App() {
       .forecast-category-trigger { display:inline-flex; align-items:center; gap:8px; margin-top:16px; width:max-content; max-width:100%; }
       .forecast-category-trigger svg { width:17px; height:17px; }
       .forecast-category-trigger { margin-top:12px; }
-      .forecast-summary-list { display:grid; gap:7px; margin:14px 0 4px; width:100%; max-width:360px; }
-      .forecast-summary-list > div { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; padding:7px 0; border-bottom:1px dashed rgba(116,151,187,.28); }
+      .forecast-summary-list { display:grid; gap:7px; margin:14px 0 4px; width:100%; max-width:390px; }
+      .forecast-summary-list > div { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; padding:8px 0; border-bottom:1px dashed rgba(116,151,187,.28); }
       .forecast-summary-list > div:last-child { border-bottom:0; }
-      .forecast-summary-list span { color:#8fb0d3; font-size:12px; line-height:1.35; }
+      .forecast-summary-label { display:flex; align-items:center; gap:7px; min-width:0; color:#8fb0d3; font-size:12px; line-height:1.35; }
       .forecast-summary-list b { color:#eef7ff; font-size:12px; text-align:right; white-space:nowrap; }
+      .inline-help { position:relative; display:inline-flex; align-items:center; justify-content:center; width:17px; height:17px; min-width:17px; padding:0; border:1px solid #54789d; border-radius:50%; background:#102844; color:#b9d6f2; cursor:help; box-shadow:none; overflow:visible; }
+      .inline-help > svg { width:11px; height:11px; }
+      .inline-help-tooltip { position:absolute; z-index:999999; left:50%; bottom:calc(100% + 9px); transform:translateX(-50%); width:min(300px,78vw); padding:11px 13px; border:1px solid #426486; border-radius:10px; background:#071524; color:#eef7ff; font-size:12px; font-weight:500; line-height:1.45; text-align:left; box-shadow:0 14px 34px rgba(0,0,0,.48); opacity:0; visibility:hidden; pointer-events:none; transition:opacity .14s ease, visibility .14s ease; white-space:normal; }
+      .inline-help:hover .inline-help-tooltip { opacity:1; visibility:visible; }
+      .inline-help-tooltip::after { content:''; position:absolute; left:50%; top:100%; width:9px; height:9px; background:#071524; border-right:1px solid #426486; border-bottom:1px solid #426486; transform:translate(-50%,-5px) rotate(45deg); }
       .forecast-summary-list .forecast-summary-total { margin-top:4px; padding:10px 12px; border:1px solid rgba(56,189,248,.35); border-radius:10px; background:rgba(56,189,248,.07); }
       .forecast-summary-list .forecast-summary-total span { color:#d9ecff; font-weight:800; }
       .forecast-summary-list .forecast-summary-total b { font-size:14px; }
@@ -2368,12 +2380,30 @@ export default function App() {
                 <strong className={forecastClosing>=0?'positive':'negative'}>{money(forecastClosing)}</strong>
                 <p>Saldo estimado al finalizar el mes seleccionado.</p>
                 <div className="forecast-summary-list">
-                  <div><span>Saldo actual de las cuentas</span><b>{money(currentAccountsBalance)}</b></div>
-                  <div><span>Gasto registrado este mes</span><b>{money(forecastExpenseCurrent)}</b></div>
-                  <div><span>Gasto pendiente proyectado</span><b>{money(forecastRemainingExpense)}</b></div>
-                  <div><span>Gastos recurrentes incluidos</span><b>{money(recurringForecastPending)}</b></div>
-                  <div><span>Ahorros ya descontados</span><b>{money(monthlySavingsDeposits)}</b></div>
-                  <div className="forecast-summary-total"><span>Saldo estimado al cierre</span><b className={forecastClosing >= 0 ? 'positive' : 'negative'}>{money(forecastClosing)}</b></div>
+                  <div>
+                    <span className="forecast-summary-label">Saldo actual de las cuentas <InlineHelp text="Suma el saldo manual de todas las cuentas y aplica únicamente las transferencias entre ellas. Es el punto de partida real de la predicción." /></span>
+                    <b>{money(currentAccountsBalance)}</b>
+                  </div>
+                  <div>
+                    <span className="forecast-summary-label">Gasto registrado este mes <InlineHelp text="Suma los egresos ya cargados en las categorías seleccionadas para la predicción. Los aportes a ahorros no se incluyen como ritmo de gasto." /></span>
+                    <b>{money(forecastExpenseCurrent)}</b>
+                  </div>
+                  <div>
+                    <span className="forecast-summary-label">Gasto pendiente proyectado <InlineHelp text="Es el gasto que todavía se estima realizar hasta fin de mes. Se obtiene comparando el gasto total proyectado con lo que ya fue registrado." /></span>
+                    <b>{money(forecastRemainingExpense)}</b>
+                  </div>
+                  <div>
+                    <span className="forecast-summary-label">Gastos recurrentes incluidos <InlineHelp text="Incluye gastos que se repitieron en meses anteriores en fechas cercanas y que todavía no aparecen en el mes actual, siempre que su categoría esté seleccionada." /></span>
+                    <b>{money(recurringForecastPending)}</b>
+                  </div>
+                  <div>
+                    <span className="forecast-summary-label">Ahorros ya descontados <InlineHelp text="Muestra los aportes enviados a Ahorros durante el mes. Ya están descontados del saldo actual y no se vuelven a restar ni se proyectan como gasto futuro." /></span>
+                    <b>{money(monthlySavingsDeposits)}</b>
+                  </div>
+                  <div className="forecast-summary-total">
+                    <span className="forecast-summary-label">Saldo estimado al cierre <InlineHelp text="Resultado final estimado: saldo actual de las cuentas menos los gastos futuros pendientes. Los ahorros ya están incluidos en el saldo actual." /></span>
+                    <b className={forecastClosing >= 0 ? 'positive' : 'negative'}>{money(forecastClosing)}</b>
+                  </div>
                 </div>
                 <button type="button" className="secondary forecast-category-trigger" onClick={openForecastCategoryModal}>
                   <Settings2 /> Seleccionar categorías
