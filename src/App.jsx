@@ -679,7 +679,22 @@ export default function App() {
 
   const accountBalance = (accountId) => {
     const account = accounts.find(a => a.id === accountId)
-    const manualBalance = Number(account?.initial_balance) || 0
+    if (!account) return 0
+
+    // La cuenta básica es la primera cuenta creada por el usuario. Su saldo representa
+    // el patrimonio líquido total: saldo disponible actual + dinero acumulado en ahorros.
+    const basicAccount = [...accounts].sort((a, b) => {
+      const dateA = a.created_at ? new Date(a.created_at).getTime() : Number.MAX_SAFE_INTEGER
+      const dateB = b.created_at ? new Date(b.created_at).getTime() : Number.MAX_SAFE_INTEGER
+      if (dateA !== dateB) return dateA - dateB
+      return String(a.id || '').localeCompare(String(b.id || ''))
+    })[0] || accounts[0]
+
+    if (accountId === basicAccount?.id) {
+      return closingBalance + savingsBalance
+    }
+
+    const manualBalance = Number(account.initial_balance) || 0
     const transferDelta = movements
       .filter(movement => movement.account_id === accountId && isTransferMovement(movement))
       .reduce((sum, movement) => {
@@ -1006,8 +1021,18 @@ export default function App() {
     return new Date(year, monthNumber, 0).getDate()
   }, [month])
   const dayTicks = useMemo(() => Array.from({ length: daysInSelectedMonth }, (_, index) => index + 1), [daysInSelectedMonth])
+  const visibleDayLimit = useMemo(() => {
+    const currentMonth = monthKey()
+    if (month < currentMonth) return daysInSelectedMonth
+    if (month > currentMonth) return 0
+    return Math.min(new Date().getDate(), daysInSelectedMonth)
+  }, [month, daysInSelectedMonth])
+  const visibleDayTicks = useMemo(
+    () => dayTicks.filter(day => day <= visibleDayLimit),
+    [dayTicks, visibleDayLimit]
+  )
   const daily = useMemo(() => {
-    const grouped = Object.fromEntries(dayTicks.map(day => [day, { day, ingresos: 0, egresos: 0 }]))
+    const grouped = Object.fromEntries(visibleDayTicks.map(day => [day, { day, ingresos: 0, egresos: 0 }]))
     monthRows.forEach(x => {
       const day = Number(x.date?.slice(8, 10))
       if (!grouped[day]) return
@@ -1017,7 +1042,7 @@ export default function App() {
     let cumulative = openingBalance
     let accumulatedIncome = 0
     let accumulatedExpense = 0
-    return dayTicks.map(day => {
+    return visibleDayTicks.map(day => {
       const current = grouped[day]
       accumulatedIncome += current.ingresos
       accumulatedExpense += current.egresos
@@ -1030,7 +1055,7 @@ export default function App() {
         egresosAc: accumulatedExpense
       }
     })
-  }, [monthRows, openingBalance, dayTicks])
+  }, [monthRows, openingBalance, visibleDayTicks])
 
   const monthTotals = useMemo(() => {
     const grouped = financialMovements.reduce((out, item) => {
@@ -2885,7 +2910,7 @@ export default function App() {
           </section>
 
           <section className="charts dashboard-grid dashboard-wide-grid">
-            <article className="panel full-width-chart"><div className="panel-title"><div><ChartInfoTitle title="Balance diario del mes" text="Representa cómo evoluciona el saldo disponible durante cada día del mes, sumando ingresos y restando egresos acumulados." /><span>Días 1 al último día del período seleccionado</span></div></div><div className="chart tall"><ResponsiveContainer><AreaChart data={daily} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis type="number" dataKey="day" domain={[1, daysInSelectedMonth]} ticks={dayTicks} interval={0} allowDecimals={false} stroke="#7890a8" tick={{ fontSize: 10 }}/><YAxis stroke="#7890a8" width={72} tickFormatter={v => `$${Math.round(v/1000)}k`}/><Tooltip formatter={v => money(v)} labelFormatter={d => `Día ${Number(d)}`}/><Area type="monotone" dataKey="acumulado" name="Saldo disponible" stroke="#4ade80" fill="#4ade8033" strokeWidth={3}/></AreaChart></ResponsiveContainer></div></article>
+            <article className="panel full-width-chart"><div className="panel-title"><div><ChartInfoTitle title="Balance diario del mes" text="Representa cómo evoluciona el saldo disponible durante cada día del mes, sumando ingresos y restando egresos acumulados." /><span>Días 1 al día actual del período seleccionado</span></div></div><div className="chart tall"><ResponsiveContainer><AreaChart data={daily} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis type="number" dataKey="day" domain={[1, Math.max(visibleDayLimit, 1)]} ticks={visibleDayTicks} interval={0} allowDecimals={false} stroke="#7890a8" tick={{ fontSize: 10 }}/><YAxis stroke="#7890a8" width={72} tickFormatter={v => `$${Math.round(v/1000)}k`}/><Tooltip formatter={v => money(v)} labelFormatter={d => `Día ${Number(d)}`}/><Area type="monotone" dataKey="acumulado" name="Saldo disponible" stroke="#4ade80" fill="#4ade8033" strokeWidth={3}/></AreaChart></ResponsiveContainer></div></article>
 
             <article className="panel"><div className="panel-title"><div><ChartInfoTitle title="Gastos por categoría" text="Distribuye el total mensual de egresos entre las distintas categorías para mostrar cuáles concentran la mayor parte del gasto." /><span>Participación sobre el total mensual</span></div></div><div className="chart"><ResponsiveContainer><PieChart><Pie data={byCategory} dataKey="value" nameKey="name" innerRadius={46} outerRadius={88}>{byCategory.map((_,i)=><Cell key={i} fill={palette[i%palette.length]}/>)}</Pie><Tooltip formatter={v=>money(v)}/></PieChart></ResponsiveContainer></div><div className="legend compact-legend">{byCategory.slice(0,8).map((x,i)=><span key={x.name}><i style={{background:palette[i%palette.length]}}></i>{x.name}<b>{money(x.value)}</b></span>)}</div></article>
 
@@ -2895,7 +2920,7 @@ export default function App() {
 
             <article className="panel"><div className="panel-title"><div><ChartInfoTitle title="Ingresos por categoría" text="Muestra cómo se distribuyen los ingresos del mes según su categoría u origen." /><span>Origen de los fondos del mes</span></div></div><div className="chart"><ResponsiveContainer><BarChart data={incomeByCategory.slice(0,10)} layout="vertical" margin={{ left: 20, right: 16 }}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis type="number" stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><YAxis type="category" dataKey="name" width={115} stroke="#7890a8" tick={{fontSize:10}}/><Tooltip formatter={v=>money(v)}/><Bar dataKey="value" name="Ingresos" fill="#4ade80" radius={[0,5,5,0]}/></BarChart></ResponsiveContainer></div></article>
 
-            <article className="panel"><div className="panel-title"><div><ChartInfoTitle title="Ingresos y egresos diarios" text="Compara los ingresos y egresos registrados en cada día del mes para detectar jornadas con mayor movimiento de dinero." /><span>Comparación por día</span></div></div><div className="chart"><ResponsiveContainer><BarChart data={daily} margin={{ right: 8 }}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis type="number" dataKey="day" domain={[1, daysInSelectedMonth]} ticks={dayTicks} interval={0} allowDecimals={false} stroke="#7890a8" tick={{fontSize:9}}/><YAxis stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><Tooltip formatter={v=>money(v)}/><Legend/><Bar dataKey="ingresos" fill="#4ade80"/><Bar dataKey="egresos" fill="#fb7185"/></BarChart></ResponsiveContainer></div></article>
+            <article className="panel"><div className="panel-title"><div><ChartInfoTitle title="Ingresos y egresos diarios" text="Compara los ingresos y egresos registrados en cada día del mes para detectar jornadas con mayor movimiento de dinero." /><span>Comparación por día</span></div></div><div className="chart"><ResponsiveContainer><BarChart data={daily} margin={{ right: 8 }}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis type="number" dataKey="day" domain={[1, Math.max(visibleDayLimit, 1)]} ticks={visibleDayTicks} interval={0} allowDecimals={false} stroke="#7890a8" tick={{fontSize:9}}/><YAxis stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><Tooltip formatter={v=>money(v)}/><Legend/><Bar dataKey="ingresos" fill="#4ade80"/><Bar dataKey="egresos" fill="#fb7185"/></BarChart></ResponsiveContainer></div></article>
 
             <article className="panel"><div className="panel-title"><div><ChartInfoTitle title="Ingresos vs. egresos acumulados" text="Compara la acumulación progresiva de ingresos y egresos dentro del mes y permite observar en qué momento una curva supera a la otra." /><span>Evolución dentro del mes</span></div></div><div className="chart"><ResponsiveContainer><LineChart data={daily}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis type="number" dataKey="day" domain={[1, daysInSelectedMonth]} ticks={dayTicks} interval={0} allowDecimals={false} stroke="#7890a8" tick={{fontSize:9}}/><YAxis stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><Tooltip formatter={v=>money(v)}/><Legend/><Line type="monotone" dataKey="ingresosAc" name="Ingresos acumulados" stroke="#4ade80" strokeWidth={3} dot={false}/><Line type="monotone" dataKey="egresosAc" name="Egresos acumulados" stroke="#fb7185" strokeWidth={3} dot={false}/></LineChart></ResponsiveContainer></div></article>
 
