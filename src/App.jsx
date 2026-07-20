@@ -1434,42 +1434,50 @@ export default function App() {
     forecastExpenseCurrent + recurringForecastPending
   )
 
-  // La predicción parte del saldo real disponible en las cuentas, no del balance
-  // contable mensual. Los aportes a ahorros ya están reflejados en ese saldo manual y
-  // por eso se muestran como informativos, sin volver a descontarlos.
-  const currentAccountsBalance = useMemo(
-    () => accounts.reduce((sum, account) => sum + accountBalance(account.id), 0),
-    [accounts, movements]
-  )
+  // La predicción parte exactamente del mismo "Saldo actual" mostrado en Inicio.
+  // Ese saldo ya contiene todos los ingresos, egresos y aportes a ahorros registrados
+  // hasta hoy. Por eso solamente se descuentan los gastos que todavía faltan proyectar.
+  const currentForecastBalance = closingBalance
   const forecastRemainingExpense = Math.max(forecastExpense - forecastExpenseCurrent, 0)
-  const forecastClosing = currentAccountsBalance - forecastRemainingExpense
+  const forecastClosing = currentForecastBalance - forecastRemainingExpense
 
+  // Hasta el día actual se replica la curva real del Balance diario del Dashboard mensual.
+  // Desde el día actual en adelante se continúa con una curva proyectada.
   const forecastChartData = useMemo(() => {
-    const currentDay = month === monthKey()
-      ? Math.min(Math.max(new Date().getDate(), 1), daysInSelectedMonth)
+    const today = new Date()
+    const selectedIsCurrentMonth = month === monthKey()
+    const currentDay = selectedIsCurrentMonth
+      ? Math.min(Math.max(today.getDate(), 1), daysInSelectedMonth)
       : daysInSelectedMonth
     const futureDays = Math.max(daysInSelectedMonth - currentDay, 1)
     const recurringByDay = recurringForecastDetails.reduce((out, item) => {
-      const day = Math.min(Math.max(Number(item.expectedDay) || currentDay + 1, currentDay + 1), daysInSelectedMonth)
+      const day = Math.min(
+        Math.max(Number(item.expectedDay) || currentDay + 1, currentDay + 1),
+        daysInSelectedMonth
+      )
       out[day] = (out[day] || 0) + Number(item.pendingAmount || 0)
       return out
     }, {})
     const paceOnlyPending = Math.max(forecastRemainingExpense - recurringForecastPending, 0)
     const dailyPace = paceOnlyPending / futureDays
-    let projectedBalance = currentAccountsBalance
+    let projectedBalance = currentForecastBalance
 
-    return Array.from({ length: daysInSelectedMonth }, (_, index) => {
-      const day = index + 1
+    return daily.map((item) => {
+      const day = item.day
+      const isActualDay = day <= currentDay
+
       if (day > currentDay) {
         projectedBalance -= dailyPace
         projectedBalance -= recurringByDay[day] || 0
       }
+
       return {
         day,
-        saldoProyectado: day < currentDay ? null : projectedBalance
+        saldoReal: isActualDay ? item.acumulado : null,
+        saldoProyectado: day < currentDay ? null : (day === currentDay ? currentForecastBalance : projectedBalance)
       }
     })
-  }, [month, daysInSelectedMonth, currentAccountsBalance, forecastRemainingExpense, recurringForecastPending, recurringForecastDetails])
+  }, [month, daysInSelectedMonth, daily, currentForecastBalance, forecastRemainingExpense, recurringForecastPending, recurringForecastDetails])
 
   const openForecastCategoryModal = () => {
     setForecastCategoryDraft([...forecastIncludedCategories])
@@ -2381,8 +2389,8 @@ export default function App() {
                 <p>Saldo estimado al finalizar el mes seleccionado.</p>
                 <div className="forecast-summary-list">
                   <div>
-                    <span className="forecast-summary-label">Saldo actual de las cuentas <InlineHelp text="Suma el saldo manual de todas las cuentas y aplica únicamente las transferencias entre ellas. Es el punto de partida real de la predicción." /></span>
-                    <b>{money(currentAccountsBalance)}</b>
+                    <span className="forecast-summary-label">Saldo actual <InlineHelp text="Es el mismo saldo actual que se muestra en la tarjeta de Inicio. Se actualiza con todos los ingresos, egresos y aportes a ahorros registrados hasta hoy, y es el punto de partida de la predicción." /></span>
+                    <b>{money(currentForecastBalance)}</b>
                   </div>
                   <div>
                     <span className="forecast-summary-label">Gasto registrado este mes <InlineHelp text="Suma los egresos ya cargados en las categorías seleccionadas para la predicción. Los aportes a ahorros no se incluyen como ritmo de gasto." /></span>
@@ -2401,7 +2409,7 @@ export default function App() {
                     <b>{money(monthlySavingsDeposits)}</b>
                   </div>
                   <div className="forecast-summary-total">
-                    <span className="forecast-summary-label">Saldo estimado al cierre <InlineHelp text="Resultado final estimado: saldo actual de las cuentas menos los gastos futuros pendientes. Los ahorros ya están incluidos en el saldo actual." /></span>
+                    <span className="forecast-summary-label">Saldo estimado al cierre <InlineHelp text="Resultado final estimado: saldo actual menos los gastos futuros pendientes. Los ahorros ya están descontados dentro del saldo actual y no se restan nuevamente." /></span>
                     <b className={forecastClosing >= 0 ? 'positive' : 'negative'}>{money(forecastClosing)}</b>
                   </div>
                 </div>
@@ -2421,7 +2429,9 @@ export default function App() {
                     <XAxis dataKey="day" stroke="#7890a8" tick={{fontSize:10}} />
                     <YAxis stroke="#7890a8" tick={{fontSize:10}} tickFormatter={v=>`$${Math.round(v/1000)}k`} />
                     <Tooltip formatter={v=>money(v)} contentStyle={{background:'#071524',border:'1px solid #365b7d',borderRadius:10,color:'#f8fbff',boxShadow:'0 12px 30px rgba(0,0,0,.42)'}} labelStyle={{color:'#f8fbff',fontWeight:800}} itemStyle={{color:'#f8fbff'}} />
-                    <Line type="monotone" dataKey="saldoProyectado" name="Saldo proyectado" stroke="#4ade80" strokeWidth={3} dot={false} connectNulls />
+                    <Legend verticalAlign="top" height={28} />
+                    <Line type="monotone" dataKey="saldoReal" name="Saldo real" stroke="#4ade80" strokeWidth={3} dot={false} connectNulls={false} />
+                    <Line type="monotone" dataKey="saldoProyectado" name="Saldo proyectado" stroke="#38bdf8" strokeWidth={3} strokeDasharray="7 5" dot={false} connectNulls={false} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
