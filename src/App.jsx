@@ -670,7 +670,17 @@ export default function App() {
 
   const accountBalance = (accountId) => {
     const account = accounts.find(a => a.id === accountId)
-    return Number(account?.initial_balance) || 0
+    const manualBalance = Number(account?.initial_balance) || 0
+    const transferDelta = movements
+      .filter(movement => movement.account_id === accountId && isTransferMovement(movement))
+      .reduce((sum, movement) => {
+        const amount = Number(movement.amount) || 0
+        if (String(movement.notes || '').includes(TRANSFER_IN)) return sum + amount
+        if (String(movement.notes || '').includes(TRANSFER_OUT)) return sum - amount
+        return sum
+      }, 0)
+
+    return manualBalance + transferDelta
   }
 
   const openNew = (type) => { setEditing(null); setNewType(type); setModal(true) }
