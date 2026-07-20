@@ -2690,6 +2690,178 @@ export default function App() {
         }
       }
     `}</style>
+    <style>{`
+      /* Corrección final: posición uniforme de ayuda e iconos en todas las tarjetas */
+      .kpi-info-card,
+      .kpis article,
+      .top-insight-card,
+      .home-summary-cards .kpi-info-card {
+        position: relative !important;
+        overflow: visible !important;
+        padding-right: 62px !important;
+      }
+
+      .kpi-info-card .kpi-help,
+      .kpis article .card-help,
+      .kpis article .kpi-help,
+      .top-insight-card .card-help,
+      .top-insight-card .kpi-help,
+      .home-summary-cards .kpi-help {
+        position: absolute !important;
+        top: 14px !important;
+        right: 14px !important;
+        bottom: auto !important;
+        left: auto !important;
+        width: 24px !important;
+        height: 24px !important;
+        min-width: 24px !important;
+        min-height: 24px !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        transform: none !important;
+        z-index: 300 !important;
+      }
+
+      .kpi-info-card .kpi-card-icon,
+      .top-insight-card .kpi-card-icon,
+      .home-summary-cards .kpi-card-icon {
+        position: absolute !important;
+        right: 18px !important;
+        bottom: 18px !important;
+        top: auto !important;
+        left: auto !important;
+        width: 32px !important;
+        height: 32px !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        transform: none !important;
+        pointer-events: none !important;
+        z-index: 2 !important;
+      }
+
+      .kpi-info-card .kpi-card-icon > svg,
+      .top-insight-card .kpi-card-icon > svg,
+      .home-summary-cards .kpi-card-icon > svg {
+        position: static !important;
+        width: 28px !important;
+        height: 28px !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        transform: none !important;
+      }
+
+      .kpi-info-card > small,
+      .kpis article > small,
+      .top-insight-card > small {
+        display: block !important;
+        padding-right: 36px !important;
+      }
+
+      /* Metas de ahorro: márgenes limpios y acciones en una sola fila */
+      .goal-grid {
+        gap: 18px !important;
+        margin-top: 18px !important;
+      }
+      .goal-card {
+        position: relative !important;
+        min-width: 0 !important;
+        padding: 20px !important;
+        overflow: hidden !important;
+      }
+      .goal-card header {
+        display: grid !important;
+        grid-template-columns: minmax(0, 1fr) auto !important;
+        align-items: start !important;
+        gap: 16px !important;
+        min-height: 0 !important;
+        margin: 0 0 16px !important;
+        padding: 0 0 16px !important;
+        border-bottom: 1px solid #203852 !important;
+        overflow: visible !important;
+      }
+      .goal-card-main {
+        width: auto !important;
+        min-width: 0 !important;
+      }
+      .goal-title-line {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: flex-start !important;
+        gap: 9px !important;
+        flex-wrap: wrap !important;
+        min-width: 0 !important;
+        padding: 0 !important;
+      }
+      .goal-title-line h3 {
+        flex: 1 1 180px !important;
+        min-width: 0 !important;
+        margin: 0 !important;
+        line-height: 1.3 !important;
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+        word-break: break-word !important;
+        overflow-wrap: anywhere !important;
+      }
+      .goal-priority {
+        flex: 0 0 auto !important;
+      }
+      .goal-target {
+        display: flex !important;
+        align-items: baseline !important;
+        gap: 8px !important;
+        margin: 10px 0 0 !important;
+        min-width: 0 !important;
+      }
+      .goal-actions {
+        position: static !important;
+        width: auto !important;
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center !important;
+        justify-content: flex-end !important;
+        gap: 7px !important;
+        margin: 0 !important;
+        z-index: auto !important;
+      }
+      .goal-actions button {
+        width: 34px !important;
+        height: 34px !important;
+        min-width: 34px !important;
+        min-height: 34px !important;
+        padding: 0 !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+      }
+      .goal-progress-head,
+      .goal-progress,
+      .goal-stat-grid {
+        width: 100% !important;
+        margin-right: 0 !important;
+      }
+      .goal-progress-head { margin-top: 0 !important; }
+      .goal-progress { margin: 8px 0 16px !important; }
+      .goal-stat-grid { gap: 10px !important; }
+      .goal-stat-grid > div { padding: 12px !important; }
+
+      @media (max-width: 720px) {
+        .goal-card { padding: 16px !important; }
+        .goal-card header {
+          grid-template-columns: 1fr !important;
+          gap: 12px !important;
+          padding-top: 0 !important;
+          min-height: 0 !important;
+        }
+        .goal-actions {
+          justify-content: flex-start !important;
+        }
+        .goal-stat-grid { grid-template-columns: 1fr !important; }
+      }
+    `}</style>
     <header><div className="brand"><div className="brand-icon"><WalletCards /></div><div><b>Mis Finanzas</b><small>Información sincronizada y siempre disponible</small></div></div><div className="header-actions"><button className={`ghost header-icon ${filtersOpen || Object.values(filters).some(v => v && v !== 'all') ? 'active' : ''}`} onClick={() => { setFilterDraft(filters); setFiltersOpen(true) }} title="Filtros"><SlidersHorizontal />{Object.values(filters).some(v => v && v !== 'all') && <span className="filter-dot" />}</button><button className={`ghost header-icon ${notificationsOpen ? 'active' : ''}`} onClick={() => setNotificationsOpen(true)} title="Notificaciones"><Bell />{notifications.length > 0 && <span className="notification-badge">{notifications.length}</span>}</button><button className="secondary" onClick={() => openNew('income')}><ArrowUpCircle /> Ingreso</button><button onClick={() => openNew('expense')}><ArrowDownCircle /> Egreso</button>{isMobileViewport && <button className="ghost mobile-quick-return" onClick={() => setMobileQuickMode(true)} title="Vista rápida"><Home /></button>}{configured && <button className="ghost" onClick={() => supabase.auth.signOut()} title="Cerrar sesión" aria-label="Cerrar sesión"><LogOut /></button>}</div></header>
     {isMobileViewport && !mobileQuickMode && <button type="button" className="mobile-quick-floating-return" onClick={() => setMobileQuickMode(true)} aria-label="Volver a vista rápida"><Home /> Vista rápida</button>}
     {filtersOpen && <div className="overlay-panel" onMouseDown={() => setFiltersOpen(false)}>
