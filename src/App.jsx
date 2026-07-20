@@ -2821,6 +2821,102 @@ export default function App() {
         }
       }
     `}</style>
+    <style>{`
+      /* Ajuste final: textos completos y valores en una sola línea */
+      .kpi-info-card,
+      .kpis article,
+      .top-insight-card {
+        min-width: 0 !important;
+        padding-left: 20px !important;
+        padding-right: 58px !important;
+      }
+      .kpi-info-card .kpi-info-head,
+      .kpi-info-card > strong,
+      .kpi-info-card > small,
+      .kpis article > span,
+      .kpis article > strong,
+      .kpis article > small,
+      .top-insight-card > span,
+      .top-insight-card > strong,
+      .top-insight-card > small {
+        width: 100% !important;
+        max-width: 100% !important;
+        padding-right: 0 !important;
+        box-sizing: border-box !important;
+      }
+      .kpi-info-card > strong,
+      .kpis article > strong,
+      .top-insight-card > strong {
+        white-space: nowrap !important;
+        overflow: visible !important;
+        overflow-wrap: normal !important;
+        word-break: normal !important;
+        font-size: clamp(20px, 1.8vw, 30px) !important;
+        letter-spacing: -0.02em !important;
+      }
+      .home-summary-cards .kpi-info-card > strong {
+        white-space: nowrap !important;
+        font-size: clamp(20px, 1.75vw, 28px) !important;
+      }
+      .home-summary-cards .kpi-info-card > small,
+      .kpi-info-card > small,
+      .kpis article > small,
+      .top-insight-card > small {
+        max-width: 100% !important;
+        white-space: normal !important;
+        overflow-wrap: normal !important;
+        word-break: normal !important;
+      }
+
+      /* Metas de ahorro: márgenes correctos y cabecera compacta */
+      .goal-card {
+        padding: 20px !important;
+      }
+      .goal-card header {
+        padding: 2px 0 16px !important;
+        margin: 0 0 16px !important;
+        gap: 18px !important;
+      }
+      .goal-card-main {
+        padding: 0 !important;
+      }
+      .goal-title-line h3 {
+        margin: 0 0 10px !important;
+        line-height: 1.2 !important;
+      }
+      .goal-target {
+        width: 100% !important;
+        gap: 10px !important;
+        white-space: nowrap !important;
+      }
+      .goal-target span,
+      .goal-target strong {
+        white-space: nowrap !important;
+      }
+      .goal-actions {
+        align-self: start !important;
+        padding-top: 0 !important;
+      }
+      .goal-progress-head {
+        margin: 0 0 8px !important;
+      }
+      .goal-stat-grid {
+        margin-top: 14px !important;
+      }
+      @media (max-width: 1180px) {
+        .home-summary-cards .kpi-info-card > strong,
+        .kpi-info-card > strong,
+        .kpis article > strong,
+        .top-insight-card > strong {
+          font-size: clamp(18px, 2.2vw, 25px) !important;
+        }
+      }
+      @media (max-width: 720px) {
+        .goal-card { padding: 16px !important; }
+        .goal-card header { gap: 12px !important; }
+        .goal-target { white-space: normal !important; flex-wrap: wrap !important; }
+      }
+    `}</style>
     <header><div className="brand"><div className="brand-icon"><WalletCards /></div><div><b>Mis Finanzas</b><small>Información sincronizada y siempre disponible</small></div></div><div className="header-actions"><button className={`ghost header-icon ${filtersOpen || Object.values(filters).some(v => v && v !== 'all') ? 'active' : ''}`} onClick={() => { setFilterDraft(filters); setFiltersOpen(true) }} title="Filtros"><SlidersHorizontal />{Object.values(filters).some(v => v && v !== 'all') && <span className="filter-dot" />}</button><button className={`ghost header-icon ${notificationsOpen ? 'active' : ''}`} onClick={() => setNotificationsOpen(true)} title="Notificaciones"><Bell />{notifications.length > 0 && <span className="notification-badge">{notifications.length}</span>}</button><button className="secondary" onClick={() => openNew('income')}><ArrowUpCircle /> Ingreso</button><button onClick={() => openNew('expense')}><ArrowDownCircle /> Egreso</button>{isMobileViewport && <button className="ghost mobile-quick-return" onClick={() => setMobileQuickMode(true)} title="Vista rápida"><Home /></button>}{configured && <button className="ghost" onClick={() => supabase.auth.signOut()} title="Cerrar sesión" aria-label="Cerrar sesión"><LogOut /></button>}</div></header>
     {isMobileViewport && !mobileQuickMode && <button type="button" className="mobile-quick-floating-return" onClick={() => setMobileQuickMode(true)} aria-label="Volver a vista rápida"><Home /> Vista rápida</button>}
     {filtersOpen && <div className="overlay-panel" onMouseDown={() => setFiltersOpen(false)}>
