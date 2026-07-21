@@ -2719,7 +2719,7 @@ export default function App() {
       .kpis article,
       .top-insight-card {
         position: relative !important;
-        overflow: hidden !important;
+        overflow: visible !important;
         padding: 18px 58px 18px 18px !important;
       }
       .kpi-info-card .kpi-info-head,
