@@ -2185,6 +2185,29 @@ export default function App() {
       .chart-help[title],.kpi-help[title],article[data-help][title] { pointer-events:auto; }
       @media(max-width:1350px){.savings-entry-card .category-form{grid-template-columns:repeat(2,minmax(0,1fr)) !important}.savings-entry-card .category-form button{grid-column:1/-1;min-width:0}}
       @media(max-width:700px){.savings-entry-card .category-form{grid-template-columns:1fr !important}.savings-entry-card .category-form button{grid-column:1}}
+      /* Corrección puntual: tooltips de las tarjetas del Dashboard por encima de todo */
+      .kpis,
+      .home-summary-cards,
+      .app-content,
+      .monthly-view,
+      .standalone-view { overflow:visible !important; }
+      .kpis article,
+      .home-summary-cards .kpi-info-card { z-index:1; }
+      .kpis article:hover,
+      .home-summary-cards .kpi-info-card:hover { z-index:10000 !important; }
+      .kpi-help,
+      .card-help { z-index:10001 !important; }
+      .kpi-help-tooltip,
+      .card-help-tooltip {
+        z-index:10002 !important;
+        max-width:min(320px,calc(100vw - 390px)) !important;
+      }
+      .kpis article:first-child .kpi-help-tooltip,
+      .home-summary-cards .kpi-info-card:first-child .kpi-help-tooltip {
+        left:0 !important;
+        right:auto !important;
+      }
+
       @media(max-width:1250px){.entry-card .category-form{grid-template-columns:repeat(2,minmax(0,1fr))}.entry-card .category-form button{grid-column:1/-1}}
       @media(max-width:900px){.home-grid>.panel,.home-grid>.third{grid-column:1/-1}.sankey-flow{grid-template-columns:1fr}.flow-arrow{transform:rotate(90deg)}.comparison-grid{grid-template-columns:1fr}.filter-grid{grid-template-columns:1fr}.filter-grid .full{grid-column:1}.calendar-day{min-height:70px}.home-hero{align-items:flex-start;flex-direction:column}}
     `}</style>
