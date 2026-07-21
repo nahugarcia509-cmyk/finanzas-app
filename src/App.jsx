@@ -336,6 +336,10 @@ export default function App() {
     setTheme('blue')
     setBackgroundTheme('navy')
     setSidebarOpen(true)
+    setRecurringPayments([])
+    setCreditPlans([])
+    setDismissedNotifications([])
+    setReadNotifications([])
 
     if (session?.user?.id) loadAll()
   }, [session?.user?.id])
@@ -392,31 +396,45 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    const ownerKey = session?.user?.id || 'demo'
+    if (configured) return
     const safeRead = (key, fallback = []) => {
-      try { return JSON.parse(localStorage.getItem(`${key}_${ownerKey}`) || JSON.stringify(fallback)) } catch { return fallback }
+      try { return JSON.parse(localStorage.getItem(`${key}_demo`) || JSON.stringify(fallback)) } catch { return fallback }
     }
     setRecurringPayments(safeRead('finance_recurring_payments'))
     setCreditPlans(safeRead('finance_credit_plans'))
     setDismissedNotifications(safeRead('finance_dismissed_notifications'))
     setReadNotifications(safeRead('finance_read_notifications'))
-  }, [session?.user?.id])
+  }, [])
 
   useEffect(() => {
-    const ownerKey = session?.user?.id || 'demo'
-    localStorage.setItem(`finance_recurring_payments_${ownerKey}`, JSON.stringify(recurringPayments))
-  }, [recurringPayments, session?.user?.id])
+    if (configured) return
+    localStorage.setItem('finance_recurring_payments_demo', JSON.stringify(recurringPayments))
+  }, [recurringPayments])
 
   useEffect(() => {
-    const ownerKey = session?.user?.id || 'demo'
-    localStorage.setItem(`finance_credit_plans_${ownerKey}`, JSON.stringify(creditPlans))
-  }, [creditPlans, session?.user?.id])
+    if (configured) return
+    localStorage.setItem('finance_credit_plans_demo', JSON.stringify(creditPlans))
+  }, [creditPlans])
 
   useEffect(() => {
-    const ownerKey = session?.user?.id || 'demo'
-    localStorage.setItem(`finance_dismissed_notifications_${ownerKey}`, JSON.stringify(dismissedNotifications))
-    localStorage.setItem(`finance_read_notifications_${ownerKey}`, JSON.stringify(readNotifications))
-  }, [dismissedNotifications, readNotifications, session?.user?.id])
+    if (configured) return
+    localStorage.setItem('finance_dismissed_notifications_demo', JSON.stringify(dismissedNotifications))
+    localStorage.setItem('finance_read_notifications_demo', JSON.stringify(readNotifications))
+  }, [dismissedNotifications, readNotifications])
+
+  useEffect(() => {
+    if (!configured || !session?.user?.id || !preferencesLoaded) return
+    const timer = window.setTimeout(async () => {
+      const { error } = await supabase.from('notification_preferences').upsert({
+        user_id: session.user.id,
+        dismissed_ids: dismissedNotifications,
+        read_ids: readNotifications,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'user_id' })
+      if (error) setNotice(`No se pudieron guardar las notificaciones: ${error.message}`)
+    }, 350)
+    return () => window.clearTimeout(timer)
+  }, [configured, session?.user?.id, preferencesLoaded, dismissedNotifications, readNotifications])
 
   useEffect(() => {
     if (!undoAction) return
@@ -489,13 +507,15 @@ export default function App() {
         supabase.from('accounts').select('*').eq('user_id', currentUserId).order('name'),
         supabase.from('categories').select('*').eq('user_id', currentUserId).order('type').order('name'),
         supabase.from('transactions').select('*,accounts(name),categories(name)').eq('user_id', currentUserId).order('date', { ascending: false }),
-        supabase.from('user_settings').select('opening_balance_month,opening_balance_amount,theme,background_theme,sidebar_open,selected_income_categories,selected_reserve_categories,selected_forecast_categories,savings_goals').eq('user_id', currentUserId).maybeSingle()
+        supabase.from('user_settings').select('opening_balance_month,opening_balance_amount,theme,background_theme,sidebar_open,selected_income_categories,selected_reserve_categories,selected_forecast_categories,savings_goals').eq('user_id', currentUserId).maybeSingle(),
+        supabase.from('recurring_payments').select('*').eq('user_id', currentUserId).order('day').order('name'),
+        supabase.from('credit_plans').select('*').eq('user_id', currentUserId).order('created_at', { ascending: false }),
+        supabase.from('notification_preferences').select('dismissed_ids,read_ids').eq('user_id', currentUserId).maybeSingle()
       ])
 
-      let [a, c, m, settingsResult] = await fetchUserData()
-      if (a.error || c.error || m.error || settingsResult.error) {
-        throw new Error(a.error?.message || c.error?.message || m.error?.message || settingsResult.error?.message)
-      }
+      let [a, c, m, settingsResult, recurringResult, creditResult, notificationResult] = await fetchUserData()
+      const firstError = [a, c, m, settingsResult, recurringResult, creditResult, notificationResult].find(result => result.error)?.error
+      if (firstError) throw new Error(firstError.message)
 
       // bootstrap_user se ejecuta únicamente para una cuenta realmente nueva.
       // No se llama después de editar o eliminar cuentas, porque la función podía
@@ -504,10 +524,9 @@ export default function App() {
       if (isBrandNewUser) {
         const { error: bootstrapError } = await supabase.rpc('bootstrap_user')
         if (bootstrapError) throw bootstrapError
-        ;[a, c, m, settingsResult] = await fetchUserData()
-        if (a.error || c.error || m.error || settingsResult.error) {
-          throw new Error(a.error?.message || c.error?.message || m.error?.message || settingsResult.error?.message)
-        }
+        ;[a, c, m, settingsResult, recurringResult, creditResult, notificationResult] = await fetchUserData()
+        const bootstrapFetchError = [a, c, m, settingsResult, recurringResult, creditResult, notificationResult].find(result => result.error)?.error
+        if (bootstrapFetchError) throw new Error(bootstrapFetchError.message)
       }
 
       const ownAccounts = (a.data || []).filter(row => row.user_id === currentUserId)
@@ -530,6 +549,10 @@ export default function App() {
       setSelectedReserveCategories(Array.isArray(loadedSettings.selected_reserve_categories) ? loadedSettings.selected_reserve_categories : null)
       setSelectedForecastCategories(Array.isArray(loadedSettings.selected_forecast_categories) ? loadedSettings.selected_forecast_categories : null)
       setSavingsGoals(Array.isArray(loadedSettings.savings_goals) ? loadedSettings.savings_goals : [])
+      setRecurringPayments((recurringResult.data || []).filter(row => row.user_id === currentUserId))
+      setCreditPlans((creditResult.data || []).filter(row => row.user_id === currentUserId))
+      setDismissedNotifications(Array.isArray(notificationResult.data?.dismissed_ids) ? notificationResult.data.dismissed_ids : [])
+      setReadNotifications(Array.isArray(notificationResult.data?.read_ids) ? notificationResult.data.read_ids : [])
       setPreferencesLoaded(true)
       setTransferForm(current => ({
         ...current,
@@ -545,6 +568,10 @@ export default function App() {
       setAccounts([])
       setCategories([])
       setMovements([])
+      setRecurringPayments([])
+      setCreditPlans([])
+      setDismissedNotifications([])
+      setReadNotifications([])
       setNotice(e.message || String(e))
     } finally {
       setDataLoading(false)
@@ -776,42 +803,138 @@ export default function App() {
   }
 
 
-  const saveRecurringPayment = (e) => {
+  const saveRecurringPayment = async (e) => {
     e.preventDefault()
     const amount = Number(recurringForm.amount)
     if (!recurringForm.name.trim() || !amount || amount <= 0) return setNotice('Ingrese un nombre y un monto válido para el pago recurrente.')
-    const row = { ...recurringForm, id: crypto.randomUUID(), name: recurringForm.name.trim(), amount, day: Math.min(Math.max(Number(recurringForm.day) || 1, 1), 31), created_at: new Date().toISOString() }
-    setRecurringPayments(current => [...current, row].sort((a,b)=>a.day-b.day || a.name.localeCompare(b.name)))
+    const payload = {
+      name: recurringForm.name.trim(),
+      amount,
+      day: Math.min(Math.max(Number(recurringForm.day) || 1, 1), 31),
+      category: recurringForm.category.trim(),
+      account_id: recurringForm.account_id || null,
+      active: recurringForm.active !== false
+    }
+
+    if (!configured) {
+      const row = { ...payload, id: crypto.randomUUID(), created_at: new Date().toISOString() }
+      setRecurringPayments(current => [...current, row].sort((a,b)=>a.day-b.day || a.name.localeCompare(b.name)))
+    } else {
+      const { data, error } = await supabase.from('recurring_payments')
+        .insert({ ...payload, user_id: session.user.id })
+        .select()
+        .single()
+      if (error) return setNotice(error.message)
+      setRecurringPayments(current => [...current, data].sort((a,b)=>a.day-b.day || a.name.localeCompare(b.name)))
+    }
+
     setRecurringForm({ name: '', amount: '', day: 1, category: '', account_id: accounts[0]?.id || '', active: true })
     setNotice('Pago recurrente agregado.')
   }
 
-  const removeRecurringPayment = (id) => {
-    const removed = recurringPayments.find(item => item.id === id)
-    setRecurringPayments(current => current.filter(item => item.id !== id))
-    setUndoAction({ label: `Pago recurrente “${removed?.name || ''}” eliminado`, restore: () => setRecurringPayments(current => [...current, removed].filter(Boolean).sort((a,b)=>a.day-b.day)) })
+  const toggleRecurringPayment = async (item) => {
+    const active = item.active === false
+    if (!configured) {
+      setRecurringPayments(current => current.map(x => x.id === item.id ? { ...x, active } : x))
+      return
+    }
+    const { error } = await supabase.from('recurring_payments')
+      .update({ active, updated_at: new Date().toISOString() })
+      .eq('id', item.id).eq('user_id', session.user.id)
+    if (error) return setNotice(error.message)
+    setRecurringPayments(current => current.map(x => x.id === item.id ? { ...x, active } : x))
   }
 
-  const saveCreditPlan = (e) => {
+  const removeRecurringPayment = async (id) => {
+    const removed = recurringPayments.find(item => item.id === id)
+    if (!removed) return
+    if (!configured) {
+      setRecurringPayments(current => current.filter(item => item.id !== id))
+      setUndoAction({ label: `Pago recurrente “${removed.name}” eliminado`, restore: () => setRecurringPayments(current => [...current, removed].sort((a,b)=>a.day-b.day)) })
+      return
+    }
+    const { error } = await supabase.from('recurring_payments').delete().eq('id', id).eq('user_id', session.user.id)
+    if (error) return setNotice(error.message)
+    setRecurringPayments(current => current.filter(item => item.id !== id))
+    setUndoAction({
+      label: `Pago recurrente “${removed.name}” eliminado`,
+      restore: async () => {
+        const { id, created_at, updated_at, ...rest } = removed
+        const { data, error: restoreError } = await supabase.from('recurring_payments')
+          .insert({ ...rest, user_id: session.user.id })
+          .select().single()
+        if (restoreError) return setNotice(restoreError.message)
+        setRecurringPayments(current => [...current, data].sort((a,b)=>a.day-b.day || a.name.localeCompare(b.name)))
+      }
+    })
+  }
+
+  const saveCreditPlan = async (e) => {
     e.preventDefault()
     const total = Number(creditForm.total)
     const installments = Math.max(Number(creditForm.installments) || 1, 1)
     const paid = Math.min(Math.max(Number(creditForm.paid) || 0, 0), installments)
     if (!creditForm.description.trim() || !creditForm.card.trim() || !total || total <= 0) return setNotice('Complete la descripción, la tarjeta y el importe total.')
-    const row = { ...creditForm, id: crypto.randomUUID(), description: creditForm.description.trim(), card: creditForm.card.trim(), total, installments, paid, due_day: Math.min(Math.max(Number(creditForm.due_day) || 1, 1), 31), created_at: new Date().toISOString() }
-    setCreditPlans(current => [row, ...current])
+    const payload = {
+      description: creditForm.description.trim(),
+      card: creditForm.card.trim(),
+      total, installments, paid,
+      start_month: creditForm.start_month,
+      due_day: Math.min(Math.max(Number(creditForm.due_day) || 1, 1), 31),
+      category: creditForm.category.trim(),
+      account_id: creditForm.account_id || null
+    }
+
+    if (!configured) {
+      setCreditPlans(current => [{ ...payload, id: crypto.randomUUID(), created_at: new Date().toISOString() }, ...current])
+    } else {
+      const { data, error } = await supabase.from('credit_plans')
+        .insert({ ...payload, user_id: session.user.id })
+        .select().single()
+      if (error) return setNotice(error.message)
+      setCreditPlans(current => [data, ...current])
+    }
     setCreditForm({ description: '', card: '', total: '', installments: 1, paid: 0, start_month: monthKey(), due_day: 10, category: '', account_id: accounts[0]?.id || '' })
     setNotice('Compra en cuotas agregada.')
   }
 
-  const updateCreditPaid = (id, delta) => {
-    setCreditPlans(current => current.map(item => item.id === id ? { ...item, paid: Math.min(Math.max(Number(item.paid || 0) + delta, 0), Number(item.installments || 1)) } : item))
+  const updateCreditPaid = async (id, delta) => {
+    const currentPlan = creditPlans.find(item => item.id === id)
+    if (!currentPlan) return
+    const paid = Math.min(Math.max(Number(currentPlan.paid || 0) + delta, 0), Number(currentPlan.installments || 1))
+    if (!configured) {
+      setCreditPlans(current => current.map(item => item.id === id ? { ...item, paid } : item))
+      return
+    }
+    const { error } = await supabase.from('credit_plans')
+      .update({ paid, updated_at: new Date().toISOString() })
+      .eq('id', id).eq('user_id', session.user.id)
+    if (error) return setNotice(error.message)
+    setCreditPlans(current => current.map(item => item.id === id ? { ...item, paid } : item))
   }
 
-  const removeCreditPlan = (id) => {
+  const removeCreditPlan = async (id) => {
     const removed = creditPlans.find(item => item.id === id)
+    if (!removed) return
+    if (!configured) {
+      setCreditPlans(current => current.filter(item => item.id !== id))
+      setUndoAction({ label: `Compra “${removed.description}” eliminada`, restore: () => setCreditPlans(current => [removed, ...current]) })
+      return
+    }
+    const { error } = await supabase.from('credit_plans').delete().eq('id', id).eq('user_id', session.user.id)
+    if (error) return setNotice(error.message)
     setCreditPlans(current => current.filter(item => item.id !== id))
-    setUndoAction({ label: `Compra “${removed?.description || ''}” eliminada`, restore: () => setCreditPlans(current => [removed, ...current].filter(Boolean)) })
+    setUndoAction({
+      label: `Compra “${removed.description}” eliminada`,
+      restore: async () => {
+        const { id, created_at, updated_at, ...rest } = removed
+        const { data, error: restoreError } = await supabase.from('credit_plans')
+          .insert({ ...rest, user_id: session.user.id })
+          .select().single()
+        if (restoreError) return setNotice(restoreError.message)
+        setCreditPlans(current => [data, ...current])
+      }
+    })
   }
 
   const saveSavingsMovement = async (e) => {
@@ -3899,7 +4022,7 @@ export default function App() {
           <button><Plus/> Agregar pago</button>
         </form>
         <div className="commitment-summary"><KpiInfoCard title="Compromiso mensual" value={money(recurringPayments.filter(x=>x.active!==false).reduce((s,x)=>s+Number(x.amount||0),0))} detail={`${recurringPayments.filter(x=>x.active!==false).length} pagos activos`} icon={<Repeat2/>} tone="info" help="Suma todos los pagos recurrentes activos configurados."/><KpiInfoCard title="Próximo vencimiento" value={scheduledCommitments.find(x=>x.kind==='recurrente') ? `Día ${scheduledCommitments.find(x=>x.kind==='recurrente').day}` : 'Sin vencimientos'} detail={scheduledCommitments.find(x=>x.kind==='recurrente')?.name || 'No hay pagos pendientes'} icon={<CalendarDays/>} tone="warning" help="Muestra el siguiente pago recurrente pendiente del mes."/></div>
-        <div className="commitment-list">{recurringPayments.map(item=><article className={`commitment-card ${item.active===false?'disabled':''}`} key={item.id}><div><b>{item.name}</b><small>{item.category||'Sin categoría'} · vence el día {item.day}</small></div><strong>{money(item.amount)}</strong><div className="row-actions"><button type="button" className="ghost" onClick={()=>setRecurringPayments(current=>current.map(x=>x.id===item.id?{...x,active:x.active===false}:x))}>{item.active===false?'Activar':'Pausar'}</button><button type="button" className="ghost danger" onClick={()=>removeRecurringPayment(item.id)}><Trash2/></button></div></article>)}{!recurringPayments.length&&<div className="empty-card">Todavía no hay pagos recurrentes configurados.</div>}</div>
+        <div className="commitment-list">{recurringPayments.map(item=><article className={`commitment-card ${item.active===false?'disabled':''}`} key={item.id}><div><b>{item.name}</b><small>{item.category||'Sin categoría'} · vence el día {item.day}</small></div><strong>{money(item.amount)}</strong><div className="row-actions"><button type="button" className="ghost" onClick={()=>toggleRecurringPayment(item)}>{item.active===false?'Activar':'Pausar'}</button><button type="button" className="ghost danger" onClick={()=>removeRecurringPayment(item.id)}><Trash2/></button></div></article>)}{!recurringPayments.length&&<div className="empty-card">Todavía no hay pagos recurrentes configurados.</div>}</div>
       </section>}
 
       {tab === 'credit' && <section className="panel standalone-view commitments-view">
