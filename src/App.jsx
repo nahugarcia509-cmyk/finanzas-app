@@ -1708,60 +1708,8 @@ export default function App() {
     ? (forecastExpenseCurrent / currentDayForForecast) * daysInSelectedMonth
     : 0
 
-  // Detecta categorías recurrentes que aparecieron en fechas similares en al menos
-  // dos de los últimos cuatro meses. Si todavía no se registraron por completo en
-  // el mes seleccionado, agrega el importe pendiente esperado a la estimación.
-  const recurringForecastDetails = useMemo(() => {
-    const priorMonths = [...new Set(
-      financialMovements
-        .map(item => item.date?.slice(0, 7))
-        .filter(key => key && key < month)
-    )].sort().slice(-4)
-
-    if (priorMonths.length < 2 || !forecastIncludedCategories.length) return []
-
-    const grouped = {}
-    financialMovements.forEach(item => {
-      if (item.type !== 'expense' || savingsKind(item) === 'deposit') return
-      const monthKeyValue = item.date?.slice(0, 7)
-      if (!priorMonths.includes(monthKeyValue)) return
-      const category = item.categories?.name || 'Sin categoría'
-      if (!forecastIncludedCategories.includes(category)) return
-      const day = Number(item.date?.slice(8, 10)) || 1
-      grouped[category] ??= {}
-      grouped[category][monthKeyValue] ??= { total: 0, daySum: 0, count: 0 }
-      grouped[category][monthKeyValue].total += Number(item.amount) || 0
-      grouped[category][monthKeyValue].daySum += day
-      grouped[category][monthKeyValue].count += 1
-    })
-
-    const currentByCategory = forecastExpenseRows.reduce((out, item) => {
-      const category = item.categories?.name || 'Sin categoría'
-      out[category] = (out[category] || 0) + Number(item.amount || 0)
-      return out
-    }, {})
-
-    return Object.entries(grouped).flatMap(([category, months]) => {
-      const entries = Object.values(months)
-      if (entries.length < 2) return []
-      const averageDays = entries.map(entry => entry.daySum / Math.max(entry.count, 1))
-      const dateSpread = Math.max(...averageDays) - Math.min(...averageDays)
-      if (dateSpread > 10) return []
-
-      const expectedAmount = entries.reduce((sum, entry) => sum + entry.total, 0) / entries.length
-      const currentAmount = currentByCategory[category] || 0
-      const pendingAmount = Math.max(expectedAmount - currentAmount, 0)
-      if (pendingAmount <= 0) return []
-
-      const expectedDay = Math.round(averageDays.reduce((sum, day) => sum + day, 0) / averageDays.length)
-      return [{ category, expectedAmount, currentAmount, pendingAmount, expectedDay, activeMonths: entries.length }]
-    }).sort((a, b) => b.pendingAmount - a.pendingAmount)
-  }, [financialMovements, month, forecastIncludedCategories, forecastExpenseRows])
-
-  const recurringForecastPending = useMemo(
-    () => recurringForecastDetails.reduce((sum, item) => sum + item.pendingAmount, 0),
-    [recurringForecastDetails]
-  )
+  // La predicción ya no infiere gastos recurrentes desde movimientos anteriores.
+  // Solo considera los pagos recurrentes y las cuotas cargados explícitamente por el usuario.
 
   const monthIndex = (key) => {
     const [year, monthNumber] = String(key || monthKey()).split('-').map(Number)
@@ -1789,7 +1737,7 @@ export default function App() {
 
   const forecastExpense = Math.max(
     forecastPaceExpense,
-    forecastExpenseCurrent + recurringForecastPending
+    forecastExpenseCurrent
   ) + scheduledCommitmentsPending
 
   // La predicción parte exactamente del mismo "Saldo actual" mostrado en Inicio.
@@ -1808,16 +1756,12 @@ export default function App() {
       ? Math.min(Math.max(today.getDate(), 1), daysInSelectedMonth)
       : daysInSelectedMonth
     const futureDays = Math.max(daysInSelectedMonth - currentDay, 1)
-    const recurringByDay = recurringForecastDetails.reduce((out, item) => {
-      const day = Math.min(Math.max(Number(item.expectedDay) || currentDay + 1, currentDay + 1), daysInSelectedMonth)
-      out[day] = (out[day] || 0) + Number(item.pendingAmount || 0)
-      return out
-    }, {})
+    const recurringByDay = {}
     scheduledCommitments.forEach(item => {
       const day = Math.min(Math.max(Number(item.day) || currentDay + 1, currentDay + 1), daysInSelectedMonth)
       recurringByDay[day] = (recurringByDay[day] || 0) + Number(item.amount || 0)
     })
-    const paceOnlyPending = Math.max(forecastRemainingExpense - recurringForecastPending - scheduledCommitmentsPending, 0)
+    const paceOnlyPending = Math.max(forecastRemainingExpense - scheduledCommitmentsPending, 0)
     const dailyPace = paceOnlyPending / futureDays
     let projectedBalance = currentForecastBalance
 
@@ -1836,7 +1780,7 @@ export default function App() {
         saldoProyectado: day < currentDay ? null : (day === currentDay ? currentForecastBalance : projectedBalance)
       }
     })
-  }, [month, daysInSelectedMonth, daily, currentForecastBalance, forecastRemainingExpense, recurringForecastPending, recurringForecastDetails, scheduledCommitments, scheduledCommitmentsPending])
+  }, [month, daysInSelectedMonth, daily, currentForecastBalance, forecastRemainingExpense, scheduledCommitments, scheduledCommitmentsPending])
 
   const openForecastCategoryModal = () => {
     setForecastCategoryDraft([...forecastIncludedCategories])
@@ -2856,6 +2800,28 @@ export default function App() {
       .confirm-dialog .info-action { background:#38bdf8 !important; color:#071524 !important; }
       @media (max-width:900px) { .control-sections-grid { grid-template-columns:1fr; } .transfer-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .account-management-form { grid-template-columns:1fr 1fr; } .skeleton-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
       @media (max-width:600px) { .control-form-grid.two-cols, .transfer-grid, .account-management-form { grid-template-columns:1fr; } .transfer-description { grid-column:1; } .skeleton-grid { grid-template-columns:1fr; } }
+
+      /* Vista tablet / iPad: conserva el estilo general y evita desbordes */
+      @media (min-width:761px) and (max-width:1180px) {
+        .app .app-shell > main.app-content, .main { padding:16px 18px 34px !important; min-width:0 !important; overflow-x:hidden !important; }
+        .home-summary-cards, .home-kpis, .compact-kpis { grid-template-columns:repeat(2,minmax(0,1fr)) !important; gap:12px !important; }
+        .home-dashboard-grid, .dashboard-grid, .dashboard-wide-grid, .account-dashboard-grid { grid-template-columns:1fr !important; }
+        .home-grid { grid-template-columns:repeat(2,minmax(0,1fr)) !important; }
+        .home-grid > .panel, .home-grid > .third, .home-grid > .wide { grid-column:1/-1 !important; min-width:0 !important; }
+        .prediction-layout { grid-template-columns:1fr !important; gap:18px !important; align-items:stretch !important; }
+        .prediction-copy { min-width:0 !important; }
+        .prediction-mini-chart { min-width:0 !important; width:100% !important; height:310px !important; }
+        .prediction-mini-chart .recharts-responsive-container, .prediction-mini-chart .recharts-wrapper { width:100% !important; max-width:100% !important; }
+        .home-category-chart, .account-chart-body { grid-template-columns:1fr !important; }
+        .charts > article, .dashboard-grid > article, .panel { min-width:0 !important; max-width:100% !important; }
+        .chart-box, .chart-wrap, .chart-container { min-width:0 !important; width:100% !important; overflow:hidden !important; }
+        .commitment-form, .credit-form { grid-template-columns:repeat(2,minmax(0,1fr)) !important; }
+        .commitment-summary, .credit-grid { grid-template-columns:repeat(2,minmax(0,1fr)) !important; }
+        .forecast-summary-list > div { min-width:0 !important; }
+        .forecast-recurring-detail { max-width:100% !important; }
+        .forecast-detail-item { grid-template-columns:minmax(0,1fr) auto !important; }
+        .table-wrap { overflow-x:auto !important; -webkit-overflow-scrolling:touch; }
+      }
     `}</style>
     <style>{`
       /* Ajuste final y uniforme de iconos en todas las cards */
@@ -3451,7 +3417,7 @@ export default function App() {
 
           <article className="panel home-lower-panel prediction-modern">
             <div className="panel-title">
-              <div><ChartInfoTitle title="Predicción al cierre del mes" text="Proyecta el saldo de cierre combinando el ritmo de gastos actual con egresos recurrentes detectados en meses anteriores. Los aportes a ahorros se descuentan del saldo, pero no se extrapolan como gasto futuro." /><span>Estimación basada en el ritmo actual</span></div>
+              <div><ChartInfoTitle title="Predicción al cierre del mes" text="Proyecta el saldo de cierre combinando el ritmo de gastos actual con los pagos recurrentes y las cuotas cargados explícitamente. Los aportes a ahorros se descuentan del saldo, pero no se extrapolan como gasto futuro." /><span>Estimación basada en el ritmo actual</span></div>
             </div>
             <div className="prediction-layout">
               <div className="prediction-copy">
@@ -3472,7 +3438,7 @@ export default function App() {
                   </div>
                   <div className="forecast-recurring-row">
                     <div className="forecast-recurring-heading">
-                      <span className="forecast-summary-label">Gastos recurrentes incluidos <InlineHelp text="Incluye gastos que se repitieron en meses anteriores en fechas cercanas y que todavía no aparecen en el mes actual, siempre que su categoría esté seleccionada." /></span>
+                      <span className="forecast-summary-label">Pagos recurrentes y cuotas incluidos <InlineHelp text="Incluye únicamente los pagos activos cargados en Pagos recurrentes y las cuotas pendientes registradas en Cuotas y tarjetas. No se detectan ni duplican gastos desde movimientos anteriores." /></span>
                       <button
                         type="button"
                         className="forecast-detail-toggle"
@@ -3483,21 +3449,11 @@ export default function App() {
                         <ChevronDown className={forecastRecurringDetailOpen ? 'open' : ''} />
                       </button>
                     </div>
-                    <b>{money(recurringForecastPending + scheduledCommitmentsPending)}</b>
+                    <b>{money(scheduledCommitmentsPending)}</b>
                   </div>
                   {forecastRecurringDetailOpen && <div className="forecast-recurring-detail">
-                    {!!recurringForecastDetails.length && <>
-                      <small className="forecast-detail-section-title">Detectados por movimientos anteriores</small>
-                      {recurringForecastDetails.map(item => <div className="forecast-detail-item" key={`forecast-history-${item.category}`}>
-                        <div>
-                          <strong>{item.category}</strong>
-                          <small>Previsto cerca del día {item.expectedDay} · detectado en {item.activeMonths} meses</small>
-                        </div>
-                        <span>{money(item.pendingAmount)}</span>
-                      </div>)}
-                    </>}
                     {!!scheduledCommitments.length && <>
-                      <small className="forecast-detail-section-title">Pagos y cuotas programados</small>
+                      <small className="forecast-detail-section-title">Cargados en Pagos recurrentes y Cuotas</small>
                       {scheduledCommitments.map(item => <div className="forecast-detail-item" key={`forecast-scheduled-${item.id}`}>
                         <div>
                           <strong>{item.name}</strong>
@@ -3506,7 +3462,7 @@ export default function App() {
                         <span>{money(item.amount)}</span>
                       </div>)}
                     </>}
-                    {!recurringForecastDetails.length && !scheduledCommitments.length && <p className="forecast-detail-empty">No se detectaron gastos recurrentes pendientes para este mes.</p>}
+                    {!scheduledCommitments.length && <p className="forecast-detail-empty">No hay pagos recurrentes ni cuotas pendientes cargados para este mes.</p>}
                   </div>}
                   <div>
                     <span className="forecast-summary-label">Ahorros ya descontados <InlineHelp text="Muestra los aportes enviados a Ahorros durante el mes. Ya están descontados del saldo actual y no se vuelven a restar ni se proyectan como gasto futuro." /></span>
