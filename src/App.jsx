@@ -231,6 +231,7 @@ export default function App() {
   const [forecastCategoryModalOpen, setForecastCategoryModalOpen] = useState(false)
   const [selectedForecastCategories, setSelectedForecastCategories] = useState(null)
   const [forecastCategoryDraft, setForecastCategoryDraft] = useState([])
+  const [forecastRecurringDetailOpen, setForecastRecurringDetailOpen] = useState(false)
   const emptyFilters = { dateFrom: '', dateTo: '', category: 'all', minAmount: '', maxAmount: '' }
   const [filters, setFilters] = useState(emptyFilters)
   const [filterDraft, setFilterDraft] = useState(emptyFilters)
@@ -2820,6 +2821,20 @@ export default function App() {
       .forecast-summary-list .forecast-summary-total span { color:#d9ecff; font-weight:800; }
       .forecast-summary-list .forecast-summary-total b { font-size:14px; }
       .forecast-category-summary { display:block; margin-top:8px; color:#8fb0d3; font-size:12px; line-height:1.4; }
+      .forecast-summary-list > .forecast-recurring-row { align-items:flex-start; }
+      .forecast-recurring-heading { display:flex; flex-direction:column; align-items:flex-start; gap:5px; min-width:0; }
+      .forecast-detail-toggle { display:inline-flex; align-items:center; gap:4px; padding:0; border:0; background:transparent; color:#38bdf8; font:inherit; font-size:11px; font-weight:800; cursor:pointer; }
+      .forecast-detail-toggle svg { width:13px; height:13px; transition:transform .2s ease; }
+      .forecast-detail-toggle svg.open { transform:rotate(180deg); }
+      .forecast-summary-list > .forecast-recurring-detail { display:grid; gap:8px; margin:-2px 0 5px; padding:10px; border:1px solid rgba(56,189,248,.24); border-radius:10px; background:rgba(7,21,36,.58); }
+      .forecast-detail-section-title { color:#75bff0; font-size:10px; font-weight:900; letter-spacing:.03em; text-transform:uppercase; }
+      .forecast-detail-item { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:7px 0; border-bottom:1px solid rgba(116,151,187,.16); }
+      .forecast-detail-item:last-child { border-bottom:0; }
+      .forecast-detail-item div { min-width:0; }
+      .forecast-detail-item strong { display:block; color:#edf7ff; font-size:12px; line-height:1.3; overflow-wrap:anywhere; }
+      .forecast-detail-item small { display:block; margin-top:2px; color:#8fb0d3; font-size:10px; line-height:1.35; }
+      .forecast-detail-item > span { color:#eef7ff; font-size:12px; font-weight:900; white-space:nowrap; }
+      .forecast-detail-empty { margin:0; color:#8fb0d3; font-size:11px; line-height:1.4; }
       .forecast-category-dialog { width:min(560px,100%); max-height:min(78vh,720px); display:flex; flex-direction:column; border:1px solid #365675; border-radius:16px; background:#0b1b2f; box-shadow:0 24px 70px rgba(0,0,0,.55); overflow:hidden; }
       .forecast-category-dialog header { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; padding:20px 20px 14px; border-bottom:1px solid #29405c; }
       .forecast-category-dialog header h3 { margin:0 0 5px; }
@@ -3455,10 +3470,44 @@ export default function App() {
                     <span className="forecast-summary-label">Gasto pendiente proyectado <InlineHelp text="Es el gasto que todavía se estima realizar hasta fin de mes. Se obtiene comparando el gasto total proyectado con lo que ya fue registrado." /></span>
                     <b>{money(forecastRemainingExpense)}</b>
                   </div>
-                  <div>
-                    <span className="forecast-summary-label">Gastos recurrentes incluidos <InlineHelp text="Incluye gastos que se repitieron en meses anteriores en fechas cercanas y que todavía no aparecen en el mes actual, siempre que su categoría esté seleccionada." /></span>
-                    <b>{money(recurringForecastPending)}</b>
+                  <div className="forecast-recurring-row">
+                    <div className="forecast-recurring-heading">
+                      <span className="forecast-summary-label">Gastos recurrentes incluidos <InlineHelp text="Incluye gastos que se repitieron en meses anteriores en fechas cercanas y que todavía no aparecen en el mes actual, siempre que su categoría esté seleccionada." /></span>
+                      <button
+                        type="button"
+                        className="forecast-detail-toggle"
+                        onClick={() => setForecastRecurringDetailOpen(value => !value)}
+                        aria-expanded={forecastRecurringDetailOpen}
+                      >
+                        {forecastRecurringDetailOpen ? 'Ocultar detalle' : 'Ver detalle'}
+                        <ChevronDown className={forecastRecurringDetailOpen ? 'open' : ''} />
+                      </button>
+                    </div>
+                    <b>{money(recurringForecastPending + scheduledCommitmentsPending)}</b>
                   </div>
+                  {forecastRecurringDetailOpen && <div className="forecast-recurring-detail">
+                    {!!recurringForecastDetails.length && <>
+                      <small className="forecast-detail-section-title">Detectados por movimientos anteriores</small>
+                      {recurringForecastDetails.map(item => <div className="forecast-detail-item" key={`forecast-history-${item.category}`}>
+                        <div>
+                          <strong>{item.category}</strong>
+                          <small>Previsto cerca del día {item.expectedDay} · detectado en {item.activeMonths} meses</small>
+                        </div>
+                        <span>{money(item.pendingAmount)}</span>
+                      </div>)}
+                    </>}
+                    {!!scheduledCommitments.length && <>
+                      <small className="forecast-detail-section-title">Pagos y cuotas programados</small>
+                      {scheduledCommitments.map(item => <div className="forecast-detail-item" key={`forecast-scheduled-${item.id}`}>
+                        <div>
+                          <strong>{item.name}</strong>
+                          <small>Vence el día {item.day}{item.kind === 'cuota' ? ` · cuota ${item.installmentNumber}/${item.totalInstallments}` : ' · pago recurrente'}</small>
+                        </div>
+                        <span>{money(item.amount)}</span>
+                      </div>)}
+                    </>}
+                    {!recurringForecastDetails.length && !scheduledCommitments.length && <p className="forecast-detail-empty">No se detectaron gastos recurrentes pendientes para este mes.</p>}
+                  </div>}
                   <div>
                     <span className="forecast-summary-label">Ahorros ya descontados <InlineHelp text="Muestra los aportes enviados a Ahorros durante el mes. Ya están descontados del saldo actual y no se vuelven a restar ni se proyectan como gasto futuro." /></span>
                     <b>{money(monthlySavingsDeposits)}</b>
