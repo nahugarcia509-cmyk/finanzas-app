@@ -232,6 +232,7 @@ export default function App() {
   const [selectedForecastCategories, setSelectedForecastCategories] = useState(null)
   const [forecastCategoryDraft, setForecastCategoryDraft] = useState([])
   const [forecastRecurringDetailOpen, setForecastRecurringDetailOpen] = useState(false)
+  const [forecastDetailOpen, setForecastDetailOpen] = useState({ balance:false, registered:false, pending:false, savings:false })
   const emptyFilters = { dateFrom: '', dateTo: '', category: 'all', minAmount: '', maxAmount: '' }
   const [filters, setFilters] = useState(emptyFilters)
   const [filterDraft, setFilterDraft] = useState(emptyFilters)
@@ -1782,6 +1783,38 @@ export default function App() {
     })
   }, [month, daysInSelectedMonth, daily, currentForecastBalance, forecastRemainingExpense, scheduledCommitments, scheduledCommitmentsPending])
 
+
+  const forecastRegisteredByCategory = useMemo(() => {
+    const grouped = forecastExpenseRows.reduce((acc, item) => {
+      const name = item.categories?.name || 'Sin categoría'
+      acc[name] = (acc[name] || 0) + Number(item.amount || 0)
+      return acc
+    }, {})
+    return Object.entries(grouped)
+      .map(([name, amount]) => ({ name, amount }))
+      .sort((a, b) => b.amount - a.amount)
+  }, [forecastExpenseRows])
+
+  const forecastPacePending = Math.max(forecastPaceExpense - forecastExpenseCurrent, 0)
+
+  const forecastPendingByCategory = useMemo(() => {
+    if (forecastPacePending <= 0 || forecastExpenseCurrent <= 0) return []
+    return forecastRegisteredByCategory.map(item => ({
+      name: item.name,
+      amount: forecastPacePending * (item.amount / forecastExpenseCurrent)
+    })).filter(item => item.amount > 0.5)
+  }, [forecastRegisteredByCategory, forecastPacePending, forecastExpenseCurrent])
+
+  const monthlySavingsDetail = useMemo(() => savingsMovements
+    .filter(item => savingsKind(item) === 'deposit' && item.date?.startsWith(month))
+    .slice()
+    .sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))),
+  [savingsMovements, month])
+
+  const toggleForecastDetail = (key) => {
+    setForecastDetailOpen(current => ({ ...current, [key]: !current[key] }))
+  }
+
   const openForecastCategoryModal = () => {
     setForecastCategoryDraft([...forecastIncludedCategories])
     setForecastCategoryModalOpen(true)
@@ -3261,6 +3294,11 @@ export default function App() {
         .goal-card header { padding: 4px 2px 16px !important; }
         .goal-card-main { padding: 0 2px !important; }
       }
+
+        .forecast-expandable-row{align-items:flex-start!important}
+        .forecast-expandable-row>.forecast-recurring-heading{min-width:0;flex:1}
+        .forecast-expandable-row>b{flex:0 0 auto;padding-top:1px}
+        .forecast-recurring-detail .positive,.forecast-recurring-detail .negative{font-weight:900}
     `}</style>
     <header><div className="brand"><div className="brand-icon"><WalletCards /></div><div><b>Mis Finanzas</b><small>Información sincronizada y siempre disponible</small></div></div><div className="header-actions"><button className={`ghost header-icon ${filtersOpen || Object.values(filters).some(v => v && v !== 'all') ? 'active' : ''}`} onClick={() => { setFilterDraft(filters); setFiltersOpen(true) }} title="Filtros"><SlidersHorizontal />{Object.values(filters).some(v => v && v !== 'all') && <span className="filter-dot" />}</button><button className={`ghost header-icon ${notificationsOpen ? 'active' : ''}`} onClick={() => setNotificationsOpen(true)} title="Notificaciones"><Bell />{unreadNotifications.length > 0 && <span className="notification-badge">{unreadNotifications.length}</span>}</button><button className="secondary" onClick={() => openNew('income')}><ArrowUpCircle /> Ingreso</button><button onClick={() => openNew('expense')}><ArrowDownCircle /> Egreso</button>{isMobileViewport && <button className="ghost mobile-quick-return" onClick={() => setMobileQuickMode(true)} title="Vista rápida"><Home /></button>}{configured && <button className="ghost" onClick={() => supabase.auth.signOut()} title="Cerrar sesión" aria-label="Cerrar sesión"><LogOut /></button>}</div></header>
     {isMobileViewport && !mobileQuickMode && <button type="button" className="mobile-quick-floating-return" onClick={() => setMobileQuickMode(true)} aria-label="Volver a vista rápida"><Home /> Vista rápida</button>}
@@ -3424,18 +3462,53 @@ export default function App() {
                 <strong className={forecastClosing>=0?'positive':'negative'}>{money(forecastClosing)}</strong>
                 <p>Saldo estimado al finalizar el mes seleccionado.</p>
                 <div className="forecast-summary-list">
-                  <div>
-                    <span className="forecast-summary-label">Saldo actual <InlineHelp text="Es el mismo saldo actual que se muestra en la tarjeta de Inicio. Se actualiza con todos los ingresos, egresos y aportes a ahorros registrados hasta hoy, y es el punto de partida de la predicción." /></span>
+                  <div className="forecast-expandable-row">
+                    <div className="forecast-recurring-heading">
+                      <span className="forecast-summary-label">Saldo actual <InlineHelp text="Es el mismo saldo actual que se muestra en la tarjeta de Inicio. Se actualiza con todos los ingresos, egresos y aportes a ahorros registrados hasta hoy, y es el punto de partida de la predicción." /></span>
+                      <button type="button" className="forecast-detail-toggle" onClick={() => toggleForecastDetail('balance')} aria-expanded={forecastDetailOpen.balance}>
+                        {forecastDetailOpen.balance ? 'Ocultar detalle' : 'Ver detalle'}
+                        <ChevronDown className={forecastDetailOpen.balance ? 'open' : ''} />
+                      </button>
+                    </div>
                     <b>{money(currentForecastBalance)}</b>
                   </div>
-                  <div>
-                    <span className="forecast-summary-label">Gasto registrado este mes <InlineHelp text="Suma los egresos ya cargados en las categorías seleccionadas para la predicción. Los aportes a ahorros no se incluyen como ritmo de gasto." /></span>
+                  {forecastDetailOpen.balance && <div className="forecast-recurring-detail">
+                    <small className="forecast-detail-section-title">Composición del saldo actual</small>
+                    <div className="forecast-detail-item"><div><strong>Saldo al iniciar el mes</strong><small>Saldo acumulado de meses anteriores</small></div><span>{money(openingBalance)}</span></div>
+                    <div className="forecast-detail-item"><div><strong>Ingresos registrados</strong><small>Ingresos cargados durante el mes</small></div><span className="positive">+ {money(income)}</span></div>
+                    <div className="forecast-detail-item"><div><strong>Egresos registrados</strong><small>Incluye gastos y aportes enviados a ahorros</small></div><span className="negative">- {money(expense)}</span></div>
+                  </div>}
+                  <div className="forecast-expandable-row">
+                    <div className="forecast-recurring-heading">
+                      <span className="forecast-summary-label">Gasto registrado este mes <InlineHelp text="Suma los egresos ya cargados en las categorías seleccionadas para la predicción. Los aportes a ahorros no se incluyen como ritmo de gasto." /></span>
+                      <button type="button" className="forecast-detail-toggle" onClick={() => toggleForecastDetail('registered')} aria-expanded={forecastDetailOpen.registered}>
+                        {forecastDetailOpen.registered ? 'Ocultar detalle' : 'Ver detalle'}
+                        <ChevronDown className={forecastDetailOpen.registered ? 'open' : ''} />
+                      </button>
+                    </div>
                     <b>{money(forecastExpenseCurrent)}</b>
                   </div>
-                  <div>
-                    <span className="forecast-summary-label">Gasto pendiente proyectado <InlineHelp text="Es el gasto que todavía se estima realizar hasta fin de mes. Se obtiene comparando el gasto total proyectado con lo que ya fue registrado." /></span>
+                  {forecastDetailOpen.registered && <div className="forecast-recurring-detail">
+                    <small className="forecast-detail-section-title">Gastos registrados por categoría</small>
+                    {forecastRegisteredByCategory.map(item => <div className="forecast-detail-item" key={`registered-${item.name}`}><div><strong>{item.name}</strong><small>Movimientos incluidos en la predicción</small></div><span>{money(item.amount)}</span></div>)}
+                    {!forecastRegisteredByCategory.length && <p className="forecast-detail-empty">No hay gastos registrados en las categorías seleccionadas.</p>}
+                  </div>}
+                  <div className="forecast-expandable-row">
+                    <div className="forecast-recurring-heading">
+                      <span className="forecast-summary-label">Gasto pendiente proyectado <InlineHelp text="Es el gasto que todavía se estima realizar hasta fin de mes. Se obtiene comparando el gasto total proyectado con lo que ya fue registrado." /></span>
+                      <button type="button" className="forecast-detail-toggle" onClick={() => toggleForecastDetail('pending')} aria-expanded={forecastDetailOpen.pending}>
+                        {forecastDetailOpen.pending ? 'Ocultar detalle' : 'Ver detalle'}
+                        <ChevronDown className={forecastDetailOpen.pending ? 'open' : ''} />
+                      </button>
+                    </div>
                     <b>{money(forecastRemainingExpense)}</b>
                   </div>
+                  {forecastDetailOpen.pending && <div className="forecast-recurring-detail">
+                    <small className="forecast-detail-section-title">Detalle de la proyección pendiente</small>
+                    {forecastPendingByCategory.map(item => <div className="forecast-detail-item" key={`pending-${item.name}`}><div><strong>{item.name}</strong><small>Estimado según el ritmo de gasto del mes</small></div><span>{money(item.amount)}</span></div>)}
+                    {scheduledCommitmentsPending > 0 && <div className="forecast-detail-item"><div><strong>Pagos recurrentes y cuotas</strong><small>Compromisos pendientes cargados explícitamente</small></div><span>{money(scheduledCommitmentsPending)}</span></div>}
+                    {forecastRemainingExpense <= 0 && <p className="forecast-detail-empty">No se proyectan gastos pendientes para este mes.</p>}
+                  </div>}
                   <div className="forecast-recurring-row">
                     <div className="forecast-recurring-heading">
                       <span className="forecast-summary-label">Pagos recurrentes y cuotas incluidos <InlineHelp text="Incluye únicamente los pagos activos cargados en Pagos recurrentes y las cuotas pendientes registradas en Cuotas y tarjetas. No se detectan ni duplican gastos desde movimientos anteriores." /></span>
@@ -3464,10 +3537,21 @@ export default function App() {
                     </>}
                     {!scheduledCommitments.length && <p className="forecast-detail-empty">No hay pagos recurrentes ni cuotas pendientes cargados para este mes.</p>}
                   </div>}
-                  <div>
-                    <span className="forecast-summary-label">Ahorros ya descontados <InlineHelp text="Muestra los aportes enviados a Ahorros durante el mes. Ya están descontados del saldo actual y no se vuelven a restar ni se proyectan como gasto futuro." /></span>
+                  <div className="forecast-expandable-row">
+                    <div className="forecast-recurring-heading">
+                      <span className="forecast-summary-label">Ahorros ya descontados <InlineHelp text="Muestra los aportes enviados a Ahorros durante el mes. Ya están descontados del saldo actual y no se vuelven a restar ni se proyectan como gasto futuro." /></span>
+                      <button type="button" className="forecast-detail-toggle" onClick={() => toggleForecastDetail('savings')} aria-expanded={forecastDetailOpen.savings}>
+                        {forecastDetailOpen.savings ? 'Ocultar detalle' : 'Ver detalle'}
+                        <ChevronDown className={forecastDetailOpen.savings ? 'open' : ''} />
+                      </button>
+                    </div>
                     <b>{money(monthlySavingsDeposits)}</b>
                   </div>
+                  {forecastDetailOpen.savings && <div className="forecast-recurring-detail">
+                    <small className="forecast-detail-section-title">Aportes a ahorros del mes</small>
+                    {monthlySavingsDetail.map(item => <div className="forecast-detail-item" key={`saving-${item.id}`}><div><strong>{item.description || item.name || 'Aporte a ahorros'}</strong><small>{item.date?.split('-').reverse().join('/') || 'Sin fecha'}</small></div><span>{money(item.amount)}</span></div>)}
+                    {!monthlySavingsDetail.length && <p className="forecast-detail-empty">No hay aportes a ahorros registrados durante este mes.</p>}
+                  </div>}
                   <div className="forecast-summary-total">
                     <span className="forecast-summary-label">Saldo estimado al cierre <InlineHelp text="Resultado final estimado: saldo actual menos los gastos futuros pendientes. Los ahorros ya están descontados dentro del saldo actual y no se restan nuevamente." /></span>
                     <b className={forecastClosing >= 0 ? 'positive' : 'negative'}>{money(forecastClosing)}</b>
