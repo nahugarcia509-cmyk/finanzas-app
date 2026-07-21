@@ -3,7 +3,7 @@ import {
   ArrowDownCircle, ArrowUpCircle, CalendarDays, CircleDollarSign, FolderCog,
   LayoutDashboard, LogOut, Pencil, Plus, RefreshCw, Search, Settings, Settings2, Trash2,
   TrendingDown, TrendingUp, WalletCards, PiggyBank, ReceiptText, Download, Upload,
-  Eye, EyeOff, UserRound, Menu, ChevronDown, HelpCircle, Bell, Home, SlidersHorizontal, Keyboard, Palette, Target, CalendarRange, X
+  Eye, EyeOff, UserRound, Menu, ChevronDown, HelpCircle, Bell, Home, SlidersHorizontal, Keyboard, Palette, Target, CalendarRange, X, CreditCard, Repeat2, Undo2, AlertTriangle, CheckCircle2
 } from 'lucide-react'
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie,
@@ -273,6 +273,13 @@ export default function App() {
   const [preferencesLoaded, setPreferencesLoaded] = useState(false)
   const [isMobileViewport, setIsMobileViewport] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 760px)').matches)
   const [mobileQuickMode, setMobileQuickMode] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 760px)').matches)
+  const [recurringPayments, setRecurringPayments] = useState([])
+  const [recurringForm, setRecurringForm] = useState({ name: '', amount: '', day: 1, category: '', account_id: '', active: true })
+  const [creditPlans, setCreditPlans] = useState([])
+  const [creditForm, setCreditForm] = useState({ description: '', card: '', total: '', installments: 1, paid: 0, start_month: monthKey(), due_day: 10, category: '', account_id: '' })
+  const [undoAction, setUndoAction] = useState(null)
+  const [dismissedNotifications, setDismissedNotifications] = useState([])
+  const [readNotifications, setReadNotifications] = useState([])
 
   useEffect(() => {
     if (!configured) {
@@ -383,6 +390,39 @@ export default function App() {
       else media.removeListener(syncViewport)
     }
   }, [])
+
+  useEffect(() => {
+    const ownerKey = session?.user?.id || 'demo'
+    const safeRead = (key, fallback = []) => {
+      try { return JSON.parse(localStorage.getItem(`${key}_${ownerKey}`) || JSON.stringify(fallback)) } catch { return fallback }
+    }
+    setRecurringPayments(safeRead('finance_recurring_payments'))
+    setCreditPlans(safeRead('finance_credit_plans'))
+    setDismissedNotifications(safeRead('finance_dismissed_notifications'))
+    setReadNotifications(safeRead('finance_read_notifications'))
+  }, [session?.user?.id])
+
+  useEffect(() => {
+    const ownerKey = session?.user?.id || 'demo'
+    localStorage.setItem(`finance_recurring_payments_${ownerKey}`, JSON.stringify(recurringPayments))
+  }, [recurringPayments, session?.user?.id])
+
+  useEffect(() => {
+    const ownerKey = session?.user?.id || 'demo'
+    localStorage.setItem(`finance_credit_plans_${ownerKey}`, JSON.stringify(creditPlans))
+  }, [creditPlans, session?.user?.id])
+
+  useEffect(() => {
+    const ownerKey = session?.user?.id || 'demo'
+    localStorage.setItem(`finance_dismissed_notifications_${ownerKey}`, JSON.stringify(dismissedNotifications))
+    localStorage.setItem(`finance_read_notifications_${ownerKey}`, JSON.stringify(readNotifications))
+  }, [dismissedNotifications, readNotifications, session?.user?.id])
+
+  useEffect(() => {
+    if (!undoAction) return
+    const timer = window.setTimeout(() => setUndoAction(null), 7000)
+    return () => window.clearTimeout(timer)
+  }, [undoAction])
 
   useEffect(() => {
     const onKey = (e) => {
@@ -736,6 +776,44 @@ export default function App() {
   }
 
 
+  const saveRecurringPayment = (e) => {
+    e.preventDefault()
+    const amount = Number(recurringForm.amount)
+    if (!recurringForm.name.trim() || !amount || amount <= 0) return setNotice('Ingrese un nombre y un monto válido para el pago recurrente.')
+    const row = { ...recurringForm, id: crypto.randomUUID(), name: recurringForm.name.trim(), amount, day: Math.min(Math.max(Number(recurringForm.day) || 1, 1), 31), created_at: new Date().toISOString() }
+    setRecurringPayments(current => [...current, row].sort((a,b)=>a.day-b.day || a.name.localeCompare(b.name)))
+    setRecurringForm({ name: '', amount: '', day: 1, category: '', account_id: accounts[0]?.id || '', active: true })
+    setNotice('Pago recurrente agregado.')
+  }
+
+  const removeRecurringPayment = (id) => {
+    const removed = recurringPayments.find(item => item.id === id)
+    setRecurringPayments(current => current.filter(item => item.id !== id))
+    setUndoAction({ label: `Pago recurrente “${removed?.name || ''}” eliminado`, restore: () => setRecurringPayments(current => [...current, removed].filter(Boolean).sort((a,b)=>a.day-b.day)) })
+  }
+
+  const saveCreditPlan = (e) => {
+    e.preventDefault()
+    const total = Number(creditForm.total)
+    const installments = Math.max(Number(creditForm.installments) || 1, 1)
+    const paid = Math.min(Math.max(Number(creditForm.paid) || 0, 0), installments)
+    if (!creditForm.description.trim() || !creditForm.card.trim() || !total || total <= 0) return setNotice('Complete la descripción, la tarjeta y el importe total.')
+    const row = { ...creditForm, id: crypto.randomUUID(), description: creditForm.description.trim(), card: creditForm.card.trim(), total, installments, paid, due_day: Math.min(Math.max(Number(creditForm.due_day) || 1, 1), 31), created_at: new Date().toISOString() }
+    setCreditPlans(current => [row, ...current])
+    setCreditForm({ description: '', card: '', total: '', installments: 1, paid: 0, start_month: monthKey(), due_day: 10, category: '', account_id: accounts[0]?.id || '' })
+    setNotice('Compra en cuotas agregada.')
+  }
+
+  const updateCreditPaid = (id, delta) => {
+    setCreditPlans(current => current.map(item => item.id === id ? { ...item, paid: Math.min(Math.max(Number(item.paid || 0) + delta, 0), Number(item.installments || 1)) } : item))
+  }
+
+  const removeCreditPlan = (id) => {
+    const removed = creditPlans.find(item => item.id === id)
+    setCreditPlans(current => current.filter(item => item.id !== id))
+    setUndoAction({ label: `Compra “${removed?.description || ''}” eliminada`, restore: () => setCreditPlans(current => [removed, ...current].filter(Boolean)) })
+  }
+
   const saveSavingsMovement = async (e) => {
     e.preventDefault()
     const amount = Number(savingsForm.amount)
@@ -937,11 +1015,25 @@ export default function App() {
           const next = movements.filter(x => x.id !== id)
           setMovements(next)
           localStorage.setItem('finance_demo', JSON.stringify(next))
+          setUndoAction({ label: `Movimiento “${movement?.description || ''}” eliminado`, restore: () => {
+            const restored = [movement, ...next].filter(Boolean)
+            setMovements(restored)
+            localStorage.setItem('finance_demo', JSON.stringify(restored))
+          }})
           return
         }
         const { error } = await supabase.from('transactions').delete().eq('id', id).eq('user_id', session.user.id)
         if (error) setNotice(error.message)
-        else await loadAll()
+        else {
+          await loadAll()
+          setUndoAction({ label: `Movimiento “${movement?.description || ''}” eliminado`, restore: async () => {
+            if (!movement) return
+            const payload = { type: movement.type, date: movement.date, description: movement.description, amount: movement.amount, account_id: movement.account_id || null, category_id: movement.category_id || null, notes: movement.notes || null, user_id: session.user.id }
+            const { error: restoreError } = await supabase.from('transactions').insert(payload)
+            if (restoreError) setNotice(restoreError.message)
+            else { await loadAll(); setNotice('Movimiento restaurado.') }
+          }})
+        }
       }
     })
   }
@@ -1547,10 +1639,34 @@ export default function App() {
     [recurringForecastDetails]
   )
 
+  const monthIndex = (key) => {
+    const [year, monthNumber] = String(key || monthKey()).split('-').map(Number)
+    return year * 12 + monthNumber
+  }
+
+  const scheduledCommitments = useMemo(() => {
+    const today = new Date()
+    const selectedCurrent = month === monthKey()
+    const passedDay = selectedCurrent ? today.getDate() : 0
+    const recurring = recurringPayments.filter(item => item.active !== false && Number(item.day || 1) > passedDay).map(item => ({ id: `rec-${item.id}`, kind: 'recurrente', name: item.name, amount: Number(item.amount) || 0, day: Number(item.day) || 1 }))
+    const credits = creditPlans.flatMap(item => {
+      const start = monthIndex(item.start_month)
+      const selected = monthIndex(month)
+      const installmentNumber = selected - start + 1
+      const totalInstallments = Number(item.installments) || 1
+      if (installmentNumber < 1 || installmentNumber > totalInstallments || installmentNumber <= Number(item.paid || 0)) return []
+      if (selectedCurrent && Number(item.due_day || 1) <= passedDay) return []
+      return [{ id: `card-${item.id}`, kind: 'cuota', name: `${item.description} · ${item.card}`, amount: (Number(item.total) || 0) / totalInstallments, day: Number(item.due_day) || 1, installmentNumber, totalInstallments }]
+    })
+    return [...recurring, ...credits].sort((a,b)=>a.day-b.day)
+  }, [recurringPayments, creditPlans, month])
+
+  const scheduledCommitmentsPending = useMemo(() => scheduledCommitments.reduce((sum,item)=>sum+Number(item.amount||0),0), [scheduledCommitments])
+
   const forecastExpense = Math.max(
     forecastPaceExpense,
     forecastExpenseCurrent + recurringForecastPending
-  )
+  ) + scheduledCommitmentsPending
 
   // La predicción parte exactamente del mismo "Saldo actual" mostrado en Inicio.
   // Ese saldo ya contiene todos los ingresos, egresos y aportes a ahorros registrados
@@ -1569,14 +1685,15 @@ export default function App() {
       : daysInSelectedMonth
     const futureDays = Math.max(daysInSelectedMonth - currentDay, 1)
     const recurringByDay = recurringForecastDetails.reduce((out, item) => {
-      const day = Math.min(
-        Math.max(Number(item.expectedDay) || currentDay + 1, currentDay + 1),
-        daysInSelectedMonth
-      )
+      const day = Math.min(Math.max(Number(item.expectedDay) || currentDay + 1, currentDay + 1), daysInSelectedMonth)
       out[day] = (out[day] || 0) + Number(item.pendingAmount || 0)
       return out
     }, {})
-    const paceOnlyPending = Math.max(forecastRemainingExpense - recurringForecastPending, 0)
+    scheduledCommitments.forEach(item => {
+      const day = Math.min(Math.max(Number(item.day) || currentDay + 1, currentDay + 1), daysInSelectedMonth)
+      recurringByDay[day] = (recurringByDay[day] || 0) + Number(item.amount || 0)
+    })
+    const paceOnlyPending = Math.max(forecastRemainingExpense - recurringForecastPending - scheduledCommitmentsPending, 0)
     const dailyPace = paceOnlyPending / futureDays
     let projectedBalance = currentForecastBalance
 
@@ -1595,7 +1712,7 @@ export default function App() {
         saldoProyectado: day < currentDay ? null : (day === currentDay ? currentForecastBalance : projectedBalance)
       }
     })
-  }, [month, daysInSelectedMonth, daily, currentForecastBalance, forecastRemainingExpense, recurringForecastPending, recurringForecastDetails])
+  }, [month, daysInSelectedMonth, daily, currentForecastBalance, forecastRemainingExpense, recurringForecastPending, recurringForecastDetails, scheduledCommitments, scheduledCommitmentsPending])
 
   const openForecastCategoryModal = () => {
     setForecastCategoryDraft([...forecastIncludedCategories])
@@ -1613,15 +1730,49 @@ export default function App() {
     setForecastCategoryModalOpen(false)
   }
   const nextGoal = allocatedSavingsGoals.find(g => !g.completed)
+  const unusualExpenses = useMemo(() => {
+    const historical = financialMovements.filter(item => item.type === 'expense' && !isSavingsMovement(item))
+    const categoryStats = historical.reduce((out,item) => {
+      const category = item.categories?.name || 'Sin categoría'
+      out[category] ??= { total:0, count:0 }
+      out[category].total += Number(item.amount)||0
+      out[category].count += 1
+      return out
+    }, {})
+    const duplicateKeys = historical.reduce((out,item) => {
+      const key = `${item.date}|${String(item.description||'').trim().toLowerCase()}|${Number(item.amount)||0}`
+      out[key] = (out[key]||0)+1
+      return out
+    }, {})
+    return expenseRowsWithoutSavings.flatMap(item => {
+      const category = item.categories?.name || 'Sin categoría'
+      const stats = categoryStats[category]
+      const average = stats?.count ? stats.total / stats.count : 0
+      const duplicateKey = `${item.date}|${String(item.description||'').trim().toLowerCase()}|${Number(item.amount)||0}`
+      const reasons = []
+      if (average > 0 && Number(item.amount) >= average * 2.2 && Number(item.amount) - average >= 25000) reasons.push(`${((Number(item.amount)/average-1)*100).toFixed(0)}% sobre el promedio de ${category}`)
+      if ((duplicateKeys[duplicateKey]||0) > 1) reasons.push('posible movimiento duplicado')
+      return reasons.length ? [{ ...item, category, average, reasons }] : []
+    }).sort((a,b)=>Number(b.amount)-Number(a.amount))
+  }, [financialMovements, expenseRowsWithoutSavings])
+
   const notifications = useMemo(() => {
     const out = []
-    if (expenseWithoutSavings > previousExpense && previousExpense > 0) out.push({type:'warning', text:`Los gastos del mes superan en ${((expenseWithoutSavings/previousExpense-1)*100).toFixed(1)}% al mes comparado.`})
-    if (forecastClosing < 0) out.push({type:'danger', text:`La proyección indica un saldo negativo de ${money(Math.abs(forecastClosing))} al cierre del mes.`})
-    if (nextGoal && nextGoal.remaining > 0) out.push({type:'info', text:`Faltan ${money(nextGoal.remaining)} para completar la meta “${nextGoal.name}”.`})
-    if (!movements.length) out.push({type:'info', text:'Todavía no existen movimientos cargados.'})
-    if (!out.length) out.push({type:'success', text:'No se detectaron alertas financieras importantes.'})
-    return out
-  }, [expenseWithoutSavings, previousExpense, forecastClosing, nextGoal, movements.length])
+    const add = (id, type, title, text, group='General') => out.push({ id, type, title, text, group })
+    if (expenseWithoutSavings > previousExpense && previousExpense > 0) add('expense-rise','warning','Gastos en aumento',`Los gastos del mes superan en ${((expenseWithoutSavings/previousExpense-1)*100).toFixed(1)}% al mes comparado.`,'Control')
+    if (forecastClosing < 0) add('negative-forecast','danger','Saldo proyectado negativo',`La proyección indica un saldo negativo de ${money(Math.abs(forecastClosing))} al cierre del mes.`,'Predicción')
+    if (nextGoal && nextGoal.remaining > 0) add(`goal-${nextGoal.id}`,'info','Meta pendiente',`Faltan ${money(nextGoal.remaining)} para completar la meta “${nextGoal.name}”.`,'Metas')
+    scheduledCommitments.filter(item => item.day <= new Date().getDate()+7).forEach(item => add(item.id,'warning',item.kind==='cuota'?'Cuota próxima':'Pago próximo',`${item.name}: ${money(item.amount)} vence el día ${item.day}.`,'Vencimientos'))
+    unusualExpenses.slice(0,3).forEach(item => add(`unusual-${item.id}`,'danger','Gasto inusual',`${item.description}: ${money(item.amount)} (${item.reasons.join(' y ')}).`,'Grandes gastos'))
+    if (!movements.length) add('no-movements','info','Sin movimientos','Todavía no existen movimientos cargados.','General')
+    if (!out.length) add('all-good','success','Finanzas al día','No se detectaron alertas financieras importantes.','General')
+    return out.filter(item => !dismissedNotifications.includes(item.id))
+  }, [expenseWithoutSavings, previousExpense, forecastClosing, nextGoal, movements.length, scheduledCommitments, unusualExpenses, dismissedNotifications])
+
+  const unreadNotifications = notifications.filter(item => !readNotifications.includes(item.id))
+  const markAllNotificationsRead = () => setReadNotifications(current => [...new Set([...current, ...notifications.map(item=>item.id)])])
+  const dismissNotification = (id) => setDismissedNotifications(current => [...new Set([...current,id])])
+
 
   const calendarDays = useMemo(() => {
     const [y,m] = month.split('-').map(Number)
@@ -2207,6 +2358,13 @@ export default function App() {
         left:0 !important;
         right:auto !important;
       }
+
+      .notification-toolbar{display:flex;justify-content:flex-end;margin:-6px 0 14px}.notification-toolbar button{font-size:12px}.notification-item{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.notification-item.read{opacity:.62}.notification-copy{min-width:0}.notification-copy small{display:block;color:#7ea0c5;text-transform:uppercase;font-size:10px;letter-spacing:.06em;margin-bottom:3px}.notification-copy p{margin:5px 0 0;line-height:1.45}.notification-actions{display:flex;gap:4px}.notification-actions button{width:30px;height:30px;padding:5px}
+      .unusual-expenses-panel{margin-bottom:16px}.unusual-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(245px,1fr));gap:12px}.unusual-card{border:1px solid #553647;border-left:4px solid #fb7185;border-radius:12px;padding:14px;background:#0d1c30;display:grid;gap:8px}.unusual-card>div{display:flex;flex-direction:column}.unusual-card small{color:#88a5c5;margin-top:4px}.unusual-card strong{color:#fb7185;font-size:20px}.unusual-card p{margin:0;color:#bdcbe0;font-size:12px;line-height:1.4}
+      .commitments-view{overflow:visible}.commitment-form,.credit-form{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;align-items:end;border:1px solid #29405c;border-radius:14px;padding:16px;background:#0b192b;margin-bottom:16px}.credit-form{grid-template-columns:repeat(4,minmax(0,1fr))}.commitment-form label,.credit-form label{display:flex;flex-direction:column;gap:7px;color:#8fb0d3;font-size:12px;min-width:0}.commitment-form input,.commitment-form select,.credit-form input,.credit-form select{width:100%;min-width:0}.commitment-form button,.credit-form button{min-height:44px;justify-content:center}.commitment-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-bottom:16px;overflow:visible}.commitment-list{display:grid;gap:10px}.commitment-card{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:16px;border:1px solid #29405c;border-radius:12px;padding:14px;background:#0d1c30}.commitment-card.disabled{opacity:.55}.commitment-card>div:first-child{display:flex;flex-direction:column;gap:4px}.commitment-card small{color:#88a5c5}.commitment-card strong{font-size:20px;white-space:nowrap}.credit-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:14px}.credit-card-item{border:1px solid #29405c;border-top:3px solid var(--accent);border-radius:14px;padding:16px;background:#0d1c30}.credit-card-item header{display:flex;justify-content:space-between;gap:10px}.credit-card-item header>div{display:flex;flex-direction:column;gap:4px}.credit-card-item header small{color:#88a5c5}.credit-card-item>strong{display:block;font-size:24px;margin:16px 0 10px}.credit-card-item>strong small{font-size:12px;color:#8aa7c7}.credit-card-item p{color:#9bb2cc;font-size:12px}.credit-card-item footer{display:flex;justify-content:space-between;align-items:center;margin-top:12px}.credit-card-item footer button{width:36px;height:36px;padding:0;justify-content:center}.undo-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:300000;display:flex;align-items:center;gap:18px;background:#071524;border:1px solid #426486;border-radius:12px;padding:12px 14px;box-shadow:0 18px 50px #0009;color:#eef7ff}.undo-toast button{white-space:nowrap}
+
+      @media(max-width:1250px){.commitment-form{grid-template-columns:repeat(3,minmax(0,1fr))}.credit-form{grid-template-columns:repeat(3,minmax(0,1fr))}}
+      @media(max-width:760px){header{padding:10px 12px}.brand small{display:none}.header-actions{gap:6px}.header-actions .secondary,.header-actions>button:not(.header-icon):not(.mobile-quick-return){padding:9px}.header-actions .secondary{font-size:0}.header-actions .secondary svg{margin:0}.layout{display:block}.sidebar{position:fixed;left:0;top:72px;bottom:0;z-index:120000;width:min(86vw,310px);transform:translateX(-105%);transition:transform .2s}.sidebar.open{transform:translateX(0)}.main{padding:14px 10px 92px}.home-summary-cards,.kpis{grid-template-columns:1fr!important}.home-dashboard-grid{grid-template-columns:1fr}.commitment-form,.credit-form{grid-template-columns:1fr}.commitment-summary{grid-template-columns:1fr}.commitment-card{grid-template-columns:1fr auto}.commitment-card .row-actions{grid-column:1/-1;justify-content:flex-end}.credit-grid{grid-template-columns:1fr}.table-wrap{overflow-x:auto}.panel{border-radius:13px}.undo-toast{left:10px;right:10px;bottom:76px;transform:none;justify-content:space-between}.drawer{width:100vw}.floating-settings-button{bottom:14px;right:14px}.home-category-chart{grid-template-columns:1fr}.calendar-grid{min-width:620px}.calendar-view{overflow-x:auto}}
 
       @media(max-width:1250px){.entry-card .category-form{grid-template-columns:repeat(2,minmax(0,1fr))}.entry-card .category-form button{grid-column:1/-1}}
       @media(max-width:900px){.home-grid>.panel,.home-grid>.third{grid-column:1/-1}.sankey-flow{grid-template-columns:1fr}.flow-arrow{transform:rotate(90deg)}.comparison-grid{grid-template-columns:1fr}.filter-grid{grid-template-columns:1fr}.filter-grid .full{grid-column:1}.calendar-day{min-height:70px}.home-hero{align-items:flex-start;flex-direction:column}}
@@ -3000,7 +3158,7 @@ export default function App() {
         .goal-card-main { padding: 0 2px !important; }
       }
     `}</style>
-    <header><div className="brand"><div className="brand-icon"><WalletCards /></div><div><b>Mis Finanzas</b><small>Información sincronizada y siempre disponible</small></div></div><div className="header-actions"><button className={`ghost header-icon ${filtersOpen || Object.values(filters).some(v => v && v !== 'all') ? 'active' : ''}`} onClick={() => { setFilterDraft(filters); setFiltersOpen(true) }} title="Filtros"><SlidersHorizontal />{Object.values(filters).some(v => v && v !== 'all') && <span className="filter-dot" />}</button><button className={`ghost header-icon ${notificationsOpen ? 'active' : ''}`} onClick={() => setNotificationsOpen(true)} title="Notificaciones"><Bell />{notifications.length > 0 && <span className="notification-badge">{notifications.length}</span>}</button><button className="secondary" onClick={() => openNew('income')}><ArrowUpCircle /> Ingreso</button><button onClick={() => openNew('expense')}><ArrowDownCircle /> Egreso</button>{isMobileViewport && <button className="ghost mobile-quick-return" onClick={() => setMobileQuickMode(true)} title="Vista rápida"><Home /></button>}{configured && <button className="ghost" onClick={() => supabase.auth.signOut()} title="Cerrar sesión" aria-label="Cerrar sesión"><LogOut /></button>}</div></header>
+    <header><div className="brand"><div className="brand-icon"><WalletCards /></div><div><b>Mis Finanzas</b><small>Información sincronizada y siempre disponible</small></div></div><div className="header-actions"><button className={`ghost header-icon ${filtersOpen || Object.values(filters).some(v => v && v !== 'all') ? 'active' : ''}`} onClick={() => { setFilterDraft(filters); setFiltersOpen(true) }} title="Filtros"><SlidersHorizontal />{Object.values(filters).some(v => v && v !== 'all') && <span className="filter-dot" />}</button><button className={`ghost header-icon ${notificationsOpen ? 'active' : ''}`} onClick={() => setNotificationsOpen(true)} title="Notificaciones"><Bell />{unreadNotifications.length > 0 && <span className="notification-badge">{unreadNotifications.length}</span>}</button><button className="secondary" onClick={() => openNew('income')}><ArrowUpCircle /> Ingreso</button><button onClick={() => openNew('expense')}><ArrowDownCircle /> Egreso</button>{isMobileViewport && <button className="ghost mobile-quick-return" onClick={() => setMobileQuickMode(true)} title="Vista rápida"><Home /></button>}{configured && <button className="ghost" onClick={() => supabase.auth.signOut()} title="Cerrar sesión" aria-label="Cerrar sesión"><LogOut /></button>}</div></header>
     {isMobileViewport && !mobileQuickMode && <button type="button" className="mobile-quick-floating-return" onClick={() => setMobileQuickMode(true)} aria-label="Volver a vista rápida"><Home /> Vista rápida</button>}
     {filtersOpen && <div className="overlay-panel" onMouseDown={() => setFiltersOpen(false)}>
       <aside className="drawer" onMouseDown={e => e.stopPropagation()}>
@@ -3017,8 +3175,12 @@ export default function App() {
     </div>}
     {notificationsOpen && <div className="overlay-panel" onMouseDown={() => setNotificationsOpen(false)}>
       <aside className="drawer" onMouseDown={e => e.stopPropagation()}>
-        <div className="drawer-head"><div><h2>Notificaciones</h2><small>{notifications.length} avisos financieros</small></div><button className="ghost" onClick={() => setNotificationsOpen(false)}><X /></button></div>
-        {notifications.map((item,index)=><div className={`notification-item ${item.type || 'info'}`} key={`${item.title || 'aviso'}-${index}`}><b>{item.title || 'Aviso'}</b><p>{item.text || item.message}</p></div>)}
+        <div className="drawer-head"><div><h2>Centro de notificaciones</h2><small>{unreadNotifications.length} sin leer · {notifications.length} avisos activos</small></div><button className="ghost" onClick={() => setNotificationsOpen(false)}><X /></button></div>
+        {!!notifications.length && <div className="notification-toolbar"><button className="ghost" onClick={markAllNotificationsRead}><CheckCircle2/> Marcar todo como leído</button></div>}
+        {notifications.map(item=><div className={`notification-item ${item.type || 'info'} ${readNotifications.includes(item.id)?'read':''}`} key={item.id}>
+          <div className="notification-copy"><small>{item.group}</small><b>{item.title || 'Aviso'}</b><p>{item.text || item.message}</p></div>
+          <div className="notification-actions"><button className="ghost" onClick={()=>setReadNotifications(current=>[...new Set([...current,item.id])])} title="Marcar como leído"><CheckCircle2/></button><button className="ghost danger" onClick={()=>dismissNotification(item.id)} title="Descartar"><X/></button></div>
+        </div>)}
         {!notifications.length && <div className="empty-card">No existen notificaciones pendientes.</div>}
       </aside>
     </div>}
@@ -3037,6 +3199,8 @@ export default function App() {
               <button className={tab === 'big-expenses' ? 'active' : ''} onClick={() => setTab('big-expenses')} title="Grandes gastos"><ReceiptText /><span className="nav-label">Grandes gastos</span></button>
               <button className={tab === 'savings' ? 'active' : ''} onClick={() => setTab('savings')} title="Ahorros"><PiggyBank /><span className="nav-label">Ahorros</span></button>
               <button className={tab === 'account-management' ? 'active' : ''} onClick={() => setTab('account-management')} title="Gestión de cuentas"><WalletCards /><span className="nav-label">Gestión de cuentas</span></button>
+              <button className={tab === 'recurring' ? 'active' : ''} onClick={() => setTab('recurring')} title="Pagos recurrentes"><Repeat2 /><span className="nav-label">Pagos recurrentes</span></button>
+              <button className={tab === 'credit' ? 'active' : ''} onClick={() => setTab('credit')} title="Cuotas y tarjetas"><CreditCard /><span className="nav-label">Cuotas y tarjetas</span></button>
             </div>}
           </div>
           <button className={tab === 'analysis' ? 'active' : ''} onClick={() => setTab('analysis')} title="Análisis de finanzas"><CircleDollarSign /><span className="nav-label">ANÁLISIS DE FINANZAS</span></button>
@@ -3052,7 +3216,7 @@ export default function App() {
       <div className="toolbar">
         {tab === 'analysis'
           ? <label>Período analizado <strong>{analysisMonths[0] || DATA_START} a {analysisMonths.at(-1) || DATA_START}</strong></label>
-          : tab === 'big-expenses' || tab === 'savings' || tab === 'settings' || tab === 'calendar' || tab === 'compare' || tab === 'goals' || tab === 'control' || tab === 'account-management'
+          : tab === 'big-expenses' || tab === 'savings' || tab === 'settings' || tab === 'calendar' || tab === 'compare' || tab === 'goals' || tab === 'control' || tab === 'account-management' || tab === 'recurring' || tab === 'credit'
             ? <span></span>
             : <label>Período <input type="month" value={month} onChange={e => setMonth(e.target.value)} /></label>}
         {tab === 'dashboard' && <small className="period-note"><CalendarDays /> Todos los indicadores corresponden al mes seleccionado</small>}
@@ -3072,7 +3236,7 @@ export default function App() {
           <KpiInfoCard title="Gastado este mes" value={money(expenseWithoutSavings)} detail={`${expenseRowsWithoutSavings.length} egresos`} icon={<TrendingDown/>} tone="negative" help="Suma todos los egresos del mes seleccionado, sin contar el dinero trasladado a la sección Ahorros." />
           <KpiInfoCard title="Ahorrado este mes" value={money(monthlySavingsDeposits)} detail={`Saldo total ${money(savingsBalance)}`} icon={<PiggyBank/>} tone="info" help="Muestra cuánto dinero fue guardado durante el mes seleccionado. El detalle inferior indica el saldo total acumulado en ahorros." />
           <KpiInfoCard title="Próxima meta" value={nextGoal ? money(nextGoal.remaining) : 'Sin meta'} detail={nextGoal?.name || 'Crear una meta en Ahorros'} icon={<Target/>} tone="purple" help="Indica cuánto falta para completar la meta de ahorro activa con mayor prioridad." />
-          <KpiInfoCard title="Alertas" value={notifications.length} detail="Revisar centro de notificaciones" icon={<Bell/>} tone="warning" help="Cantidad de avisos financieros detectados, como aumento de gastos, falta de movimientos o metas próximas a completarse." />
+          <KpiInfoCard title="Alertas" value={unreadNotifications.length} detail="Revisar centro de notificaciones" icon={<Bell/>} tone="warning" help="Cantidad de avisos financieros detectados, como aumento de gastos, falta de movimientos o metas próximas a completarse." />
         </section>
 
         <section className="home-dashboard-grid">
@@ -3467,6 +3631,13 @@ export default function App() {
       </>}
 
       {tab === 'big-expenses' && <>
+        <section className="panel unusual-expenses-panel">
+          <div className="panel-title"><div><h3>Detección de gastos inusuales</h3><span>Importes muy superiores al promedio o posibles duplicados del mes</span></div><AlertTriangle /></div>
+          <div className="unusual-grid">
+            {unusualExpenses.slice(0,6).map(item=><article className="unusual-card" key={item.id}><div><b>{item.description}</b><small>{item.category} · {item.date?.split('-').reverse().join('/')}</small></div><strong>{money(item.amount)}</strong><p>{item.reasons.join(' · ')}</p></article>)}
+            {!unusualExpenses.length && <div className="empty-card">No se detectaron gastos inusuales en el período seleccionado.</div>}
+          </div>
+        </section>
         <section className="kpis compact-kpis category-kpis">
           <article><CardHelp text="Suma de todos los egresos individuales, excluyendo movimientos de ahorro." /><span>Total histórico de gastos</span><strong className="negative">{money(bigExpenses.reduce((s, x) => s + Number(x.amount), 0))}</strong><TrendingDown /><small>{bigExpenses.length} movimientos visibles</small></article>
           <article><CardHelp text="Gasto individual de mayor importe registrado." /><span>Mayor gasto registrado</span><strong className="negative">{money(bigExpenses[0]?.amount || 0)}</strong><ReceiptText /><small>{bigExpenses[0]?.description || 'Sin datos'}</small></article>
@@ -3717,6 +3888,36 @@ export default function App() {
       {tab === 'income' && <TransactionsTable rows={incomeRows} title="Ingresos" type="income" search={search} setSearch={setSearch} onEdit={m => { setEditing(m); setNewType('income'); setModal(true) }} onDelete={remove} />}
       {tab === 'expense' && <TransactionsTable rows={expenseRows} title="Egresos" type="expense" search={search} setSearch={setSearch} onEdit={m => { setEditing(m); setNewType('expense'); setModal(true) }} onDelete={remove} />}
 
+      {tab === 'recurring' && <section className="panel standalone-view commitments-view">
+        <div className="panel-title"><div><h2>Pagos recurrentes</h2><span>Servicios, alquileres, seguros y otros compromisos mensuales</span></div><Repeat2 /></div>
+        <form className="commitment-form" onSubmit={saveRecurringPayment}>
+          <label>Nombre<input value={recurringForm.name} onChange={e=>setRecurringForm({...recurringForm,name:e.target.value})} placeholder="Ej. Internet" /></label>
+          <label>Monto<input type="number" min="0" step="0.01" value={recurringForm.amount} onChange={e=>setRecurringForm({...recurringForm,amount:e.target.value})} placeholder="0,00" /></label>
+          <label>Día de vencimiento<input type="number" min="1" max="31" value={recurringForm.day} onChange={e=>setRecurringForm({...recurringForm,day:e.target.value})} /></label>
+          <label>Categoría<input value={recurringForm.category} onChange={e=>setRecurringForm({...recurringForm,category:e.target.value})} placeholder="Ej. Servicios" /></label>
+          <label>Cuenta<select value={recurringForm.account_id} onChange={e=>setRecurringForm({...recurringForm,account_id:e.target.value})}><option value="">Sin asignar</option>{accounts.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
+          <button><Plus/> Agregar pago</button>
+        </form>
+        <div className="commitment-summary"><KpiInfoCard title="Compromiso mensual" value={money(recurringPayments.filter(x=>x.active!==false).reduce((s,x)=>s+Number(x.amount||0),0))} detail={`${recurringPayments.filter(x=>x.active!==false).length} pagos activos`} icon={<Repeat2/>} tone="info" help="Suma todos los pagos recurrentes activos configurados."/><KpiInfoCard title="Próximo vencimiento" value={scheduledCommitments.find(x=>x.kind==='recurrente') ? `Día ${scheduledCommitments.find(x=>x.kind==='recurrente').day}` : 'Sin vencimientos'} detail={scheduledCommitments.find(x=>x.kind==='recurrente')?.name || 'No hay pagos pendientes'} icon={<CalendarDays/>} tone="warning" help="Muestra el siguiente pago recurrente pendiente del mes."/></div>
+        <div className="commitment-list">{recurringPayments.map(item=><article className={`commitment-card ${item.active===false?'disabled':''}`} key={item.id}><div><b>{item.name}</b><small>{item.category||'Sin categoría'} · vence el día {item.day}</small></div><strong>{money(item.amount)}</strong><div className="row-actions"><button type="button" className="ghost" onClick={()=>setRecurringPayments(current=>current.map(x=>x.id===item.id?{...x,active:x.active===false}:x))}>{item.active===false?'Activar':'Pausar'}</button><button type="button" className="ghost danger" onClick={()=>removeRecurringPayment(item.id)}><Trash2/></button></div></article>)}{!recurringPayments.length&&<div className="empty-card">Todavía no hay pagos recurrentes configurados.</div>}</div>
+      </section>}
+
+      {tab === 'credit' && <section className="panel standalone-view commitments-view">
+        <div className="panel-title"><div><h2>Cuotas y tarjetas de crédito</h2><span>Compras financiadas y dinero comprometido para los próximos meses</span></div><CreditCard /></div>
+        <form className="credit-form" onSubmit={saveCreditPlan}>
+          <label>Compra<input value={creditForm.description} onChange={e=>setCreditForm({...creditForm,description:e.target.value})} placeholder="Ej. Heladera" /></label>
+          <label>Tarjeta<input value={creditForm.card} onChange={e=>setCreditForm({...creditForm,card:e.target.value})} placeholder="Ej. Visa Banco" /></label>
+          <label>Importe total<input type="number" min="0" value={creditForm.total} onChange={e=>setCreditForm({...creditForm,total:e.target.value})} /></label>
+          <label>Cuotas<input type="number" min="1" value={creditForm.installments} onChange={e=>setCreditForm({...creditForm,installments:e.target.value})} /></label>
+          <label>Pagadas<input type="number" min="0" value={creditForm.paid} onChange={e=>setCreditForm({...creditForm,paid:e.target.value})} /></label>
+          <label>Mes inicial<input type="month" value={creditForm.start_month} onChange={e=>setCreditForm({...creditForm,start_month:e.target.value})} /></label>
+          <label>Día de vencimiento<input type="number" min="1" max="31" value={creditForm.due_day} onChange={e=>setCreditForm({...creditForm,due_day:e.target.value})} /></label>
+          <button><Plus/> Agregar compra</button>
+        </form>
+        <div className="commitment-summary"><KpiInfoCard title="Saldo pendiente" value={money(creditPlans.reduce((s,x)=>s+(Number(x.total)||0)*(1-(Number(x.paid)||0)/Math.max(Number(x.installments)||1,1)),0))} detail={`${creditPlans.length} compras registradas`} icon={<CreditCard/>} tone="negative" help="Importe total que todavía falta pagar entre todas las compras en cuotas."/><KpiInfoCard title="Cuotas del mes" value={money(scheduledCommitments.filter(x=>x.kind==='cuota').reduce((s,x)=>s+Number(x.amount||0),0))} detail={`${scheduledCommitments.filter(x=>x.kind==='cuota').length} vencimientos pendientes`} icon={<CalendarDays/>} tone="warning" help="Cuotas pendientes que vencen durante el mes seleccionado."/></div>
+        <div className="credit-grid">{creditPlans.map(item=>{const total=Number(item.total)||0;const installments=Math.max(Number(item.installments)||1,1);const paid=Math.min(Number(item.paid)||0,installments);const monthly=total/installments;const progress=(paid/installments)*100;return <article className="credit-card-item" key={item.id}><header><div><b>{item.description}</b><small>{item.card}</small></div><button type="button" className="ghost danger" onClick={()=>removeCreditPlan(item.id)}><Trash2/></button></header><strong>{money(monthly)} <small>por mes</small></strong><div className="category-progress"><div style={{width:`${progress}%`}}/></div><p>{paid} de {installments} cuotas pagadas · pendiente {money(total-monthly*paid)}</p><footer><button type="button" className="ghost" disabled={paid<=0} onClick={()=>updateCreditPaid(item.id,-1)}>−</button><span>Cuota {Math.min(paid+1,installments)} / {installments}</span><button type="button" className="ghost" disabled={paid>=installments} onClick={()=>updateCreditPaid(item.id,1)}>+</button></footer></article>})}{!creditPlans.length&&<div className="empty-card">Todavía no hay compras en cuotas registradas.</div>}</div>
+      </section>}
+
       {tab === 'account-management' && <>
         <section className="page-heading accounts-page-heading">
           <div>
@@ -3961,6 +4162,8 @@ export default function App() {
         </div>
       </div>
     </div>}
+
+    {undoAction && <div className="undo-toast"><span>{undoAction.label}</span><button onClick={async()=>{const restore=undoAction.restore;setUndoAction(null);await restore?.()}}><Undo2/> Deshacer</button></div>}
 
     {confirmDialog && <div className="confirm-backdrop" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title" onMouseDown={e => { if (e.target === e.currentTarget) setConfirmDialog(null) }}>
       <div className="confirm-dialog">
