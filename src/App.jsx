@@ -1544,7 +1544,56 @@ export default function App() {
     [selectedIncomeAnalysis]
   )
 
-  const selectedSavingsCapacity = selectedIncomeTotal - selectedExpenseAverageTotal
+  const selectedMonthlySavings = useMemo(() => {
+    const incomeNames = new Set(selectedIncomeAnalysis.map(x => x.name))
+    const expenseNames = new Set(selectedReserveExpenses.map(x => x.name))
+    const currentMonthKey = new Date().toISOString().slice(0, 7)
+
+    const totals = analysisMonths.map(monthKeyValue => {
+      let ingresos = 0
+      let egresos = 0
+
+      financialMovements.forEach(item => {
+        if (item.date?.slice(0, 7) !== monthKeyValue) return
+        const categoryName = item.categories?.name || 'Sin categoría'
+
+        if (item.type === 'income') {
+          if (incomeNames.has(categoryName)) ingresos += Number(item.amount || 0)
+          return
+        }
+
+        if (item.type !== 'expense' || savingsKind(item) === 'deposit') return
+        if (expenseNames.has(categoryName)) egresos += Number(item.amount || 0)
+      })
+
+      return { month: monthKeyValue, ingresos, egresos, neto: ingresos - egresos }
+    })
+
+    const completedMonths = totals.filter(item => item.month < currentMonthKey)
+    const referenceMonths = completedMonths.length ? completedMonths : totals
+    const netValues = referenceMonths.map(item => item.neto).sort((a, b) => a - b)
+    const average = netValues.length
+      ? netValues.reduce((sum, value) => sum + value, 0) / netValues.length
+      : 0
+    const lastComplete = referenceMonths.length
+      ? referenceMonths[referenceMonths.length - 1].neto
+      : 0
+
+    let percentile25 = 0
+    if (netValues.length) {
+      const position = (netValues.length - 1) * 0.25
+      const lower = Math.floor(position)
+      const upper = Math.ceil(position)
+      const weight = position - lower
+      percentile25 = netValues[lower] + (netValues[upper] - netValues[lower]) * weight
+    }
+
+    const recommended = Math.max(0, Math.min(average, lastComplete, percentile25))
+
+    return { totals, average, lastComplete, percentile25, recommended }
+  }, [analysisMonths, financialMovements, selectedIncomeAnalysis, selectedReserveExpenses])
+
+  const selectedSavingsCapacity = selectedMonthlySavings.recommended
   const selectedSavingsRate = selectedIncomeTotal > 0
     ? (selectedSavingsCapacity / selectedIncomeTotal) * 100
     : 0
@@ -3636,7 +3685,7 @@ export default function App() {
         </div>
         <div className="goal-overview-grid">
           <article className="visual-card"><div className="panel-title"><div><ChartInfoTitle title="Avance por objetivo" text="Compara el dinero ya asignado y el monto que todavía falta para completar cada meta."/></div></div><div className="visual-chart"><ResponsiveContainer><BarChart data={allocatedSavingsGoals.slice(0,8).map(g=>({meta:g.name,asignado:g.allocated,pendiente:g.remaining}))} layout="vertical" margin={{left:18,right:18}}><CartesianGrid strokeDasharray="3 3" stroke="#203047"/><XAxis type="number" stroke="#7890a8" tickFormatter={v=>`$${Math.round(v/1000)}k`}/><YAxis type="category" dataKey="meta" width={120} stroke="#7890a8" tick={{fontSize:11}}/><Tooltip formatter={v=>money(v)} contentStyle={{background:'#071524',border:'1px solid #365b7d',borderRadius:10,color:'#f8fbff',boxShadow:'0 12px 30px rgba(0,0,0,.42)'}} labelStyle={{color:'#f8fbff',fontWeight:800}} itemStyle={{color:'#f8fbff'}}/><Legend/><Bar dataKey="asignado" name="Asignado" stackId="a" fill="#4ade80"/><Bar dataKey="pendiente" name="Pendiente" stackId="a" fill="#334b68" radius={[0,5,5,0]}/></BarChart></ResponsiveContainer></div></article>
-          <article className="visual-card"><div className="panel-title"><div><ChartInfoTitle title="Plan sugerido" text="Usa exactamente la misma capacidad mensual de ahorro mostrada en Análisis de finanzas, calculada con las categorías de ingresos y egresos seleccionadas."/></div></div><div className="insight-list"><div className="insight-row"><span>Capacidad mensual estimada</span><strong className={selectedSavingsCapacity>=0?'positive':'negative'}>{money(Math.max(selectedSavingsCapacity,0))}</strong></div><div className="insight-row"><span>Meses para completar todo</span><strong>{selectedSavingsCapacity>0 ? Math.ceil(allocatedSavingsGoals.reduce((s,g)=>s+g.remaining,0)/selectedSavingsCapacity) : '—'}</strong></div><div className="insight-row"><span>Meta prioritaria</span><strong>{allocatedSavingsGoals[0]?.name||'Sin meta'}</strong></div><div className="insight-row"><span>Progreso global</span><strong>{allocatedSavingsGoals.reduce((s,g)=>s+Number(g.target||0),0)>0 ? `${((allocatedSavingsGoals.reduce((s,g)=>s+g.allocated,0)/allocatedSavingsGoals.reduce((s,g)=>s+Number(g.target||0),0))*100).toFixed(1)}%` : '0%'}</strong></div></div></article>
+          <article className="visual-card"><div className="panel-title"><div><ChartInfoTitle title="Plan sugerido" text="Usa el ahorro mensual recomendado de Análisis de finanzas. Se toma el menor valor entre el promedio del sobrante mensual, el último mes completo y el percentil 25 para evitar una estimación demasiado optimista."/></div></div><div className="insight-list"><div className="insight-row"><span>Ahorro mensual recomendado</span><strong className={selectedSavingsCapacity>=0?'positive':'negative'}>{money(Math.max(selectedSavingsCapacity,0))}</strong></div><div className="insight-row"><span>Meses para completar todo</span><strong>{selectedSavingsCapacity>0 ? Math.ceil(allocatedSavingsGoals.reduce((s,g)=>s+g.remaining,0)/selectedSavingsCapacity) : '—'}</strong></div><div className="insight-row"><span>Meta prioritaria</span><strong>{allocatedSavingsGoals[0]?.name||'Sin meta'}</strong></div><div className="insight-row"><span>Progreso global</span><strong>{allocatedSavingsGoals.reduce((s,g)=>s+Number(g.target||0),0)>0 ? `${((allocatedSavingsGoals.reduce((s,g)=>s+g.allocated,0)/allocatedSavingsGoals.reduce((s,g)=>s+Number(g.target||0),0))*100).toFixed(1)}%` : '0%'}</strong></div></div></article>
         </div>
         <form className="category-form goals-form" onSubmit={saveSavingsGoal}><label className="grow">Nombre de la meta<input value={goalForm.name} onChange={e=>setGoalForm({...goalForm,name:e.target.value})} placeholder="Ej. Fondo de emergencia" required /></label><label>Monto objetivo<input type="number" min="0" step="0.01" value={goalForm.target} onChange={e=>setGoalForm({...goalForm,target:e.target.value})} placeholder="0,00" required /></label><label>Prioridad<input type="number" min="1" step="1" value={goalForm.priority} onChange={e=>setGoalForm({...goalForm,priority:e.target.value})} /></label><button type="submit"><Plus/> Agregar meta</button></form>
         <div className="goal-grid">{allocatedSavingsGoals.map(goal=><article className={`goal-card ${goal.completed ? 'completed' : ''}`} key={goal.id}><header><div className="goal-card-main"><div className="goal-title-line"><h3>{goal.completed?'✓ ':''}{goal.name}</h3></div><div className="goal-target"><span>Objetivo</span><strong>{money(goal.target)}</strong></div></div><div className="goal-actions"><span className="goal-priority">Prioridad {goal.priority}</span><button className="ghost" type="button" onClick={()=>moveSavingsGoal(goal.id,-1)} aria-label="Subir prioridad">↑</button><button className="ghost" type="button" onClick={()=>moveSavingsGoal(goal.id,1)} aria-label="Bajar prioridad">↓</button><button className="ghost danger" type="button" onClick={()=>removeSavingsGoal(goal.id)} aria-label="Eliminar meta"><Trash2/></button></div></header><div className="goal-progress-head"><span>Progreso</span><strong>{goal.progress.toFixed(1)}%</strong></div><div className="goal-progress"><div style={{width:`${goal.progress}%`}}></div></div><div className="goal-stat-grid"><div><span>Asignado</span><b className="positive">{money(goal.allocated)}</b></div><div><span>Restante</span><b>{money(goal.remaining)}</b></div><div><span>Estado</span><b>{goal.completed?'Completada':'En progreso'}</b></div></div></article>)}{!allocatedSavingsGoals.length&&<><div className="empty-card">Todavía no existen metas de ahorro.</div><div className="goal-empty-advice"><article><b>Fondo de emergencia</b><span>Una primera meta útil es cubrir entre tres y seis meses de gastos habituales.</span></article><article><b>Objetivo concreto</b><span>Definir nombre, monto y prioridad facilita medir el progreso y mantener constancia.</span></article><article><b>Aporte mensual</b><span>Reservar una cantidad fija al cobrar ayuda a avanzar antes de realizar otros gastos.</span></article></div></>}</div>
@@ -3646,7 +3695,7 @@ export default function App() {
         <section className="kpis extended" style={{"--card-cursor":"help"}}>
           <article><CardHelp text="Suma de los promedios mensuales de las categorías de ingreso actualmente seleccionadas en la tabla. Cada categoría se promedia únicamente sobre sus meses activos." /><span>Ingreso mensual promedio</span><strong className="positive">{money(selectedIncomeTotal)}</strong><TrendingUp /><small>{selectedIncomeAnalysis.length} categorías seleccionadas</small></article>
           <article><CardHelp text="Suma de los promedios mensuales de las categorías de egreso actualmente seleccionadas en la tabla. No incluye el margen adicional del 20% ni los aportes enviados a ahorros." /><span>Egreso mensual promedio</span><strong className="negative">{money(selectedExpenseAverageTotal)}</strong><TrendingDown /><small>{selectedReserveExpenses.length} categorías seleccionadas · sin considerar ahorros</small></article>
-          <article><CardHelp text="Capacidad mensual de ahorro calculada con las categorías seleccionadas. Se obtiene restando el egreso mensual promedio seleccionado al ingreso mensual promedio seleccionado." /><span>Capacidad mensual de ahorro</span><strong className={selectedSavingsCapacity >= 0 ? 'positive' : 'negative'}>{money(selectedSavingsCapacity)}</strong><CircleDollarSign /><small>{selectedSavingsRate.toFixed(1)}% del ingreso seleccionado</small></article>
+          <article><CardHelp text="Estimación conservadora basada en el sobrante real de cada mes completo. Se utiliza el menor valor entre el promedio mensual, el último mes completo y el percentil 25 de los saldos mensuales, evitando que uno o dos meses excepcionalmente buenos inflen el resultado." /><span>Ahorro mensual recomendado</span><strong className={selectedSavingsCapacity >= 0 ? 'positive' : 'negative'}>{money(selectedSavingsCapacity)}</strong><CircleDollarSign /><small>{selectedSavingsRate.toFixed(1)}% del ingreso seleccionado · criterio conservador</small></article>
           <article><CardHelp text="Monto recomendado para cubrir tres meses de los egresos promedio seleccionados. Se calcula multiplicando el egreso mensual promedio seleccionado por 3." /><span>Fondo de emergencia sugerido</span><strong>{money(selectedEmergencyFund)}</strong><WalletCards /><small>3 meses de egresos seleccionados</small></article>
           <article><CardHelp text="Suma del dinero sugerido para reservar únicamente en las categorías seleccionadas. Cada categoría usa su promedio mensual activo más un 20% de margen." /><span>Presupuesto mensual seleccionado</span><strong>{money(selectedReserveTotal)}</strong><FolderCog /><small>{selectedReserveExpenses.length} categorías incluidas</small></article>
           <article><CardHelp text="Compara el promedio de egresos de los últimos tres meses con el promedio histórico. Un porcentaje positivo indica que los gastos recientes aumentaron." /><span>Tendencia reciente de gastos</span><strong className={financeAnalysis.expenseTrend <= 0 ? 'positive' : 'negative'}>{financeAnalysis.expenseTrend >= 0 ? '+' : ''}{financeAnalysis.expenseTrend.toFixed(1)}%</strong><TrendingDown /><small>Últimos 3 meses contra promedio histórico</small></article>
