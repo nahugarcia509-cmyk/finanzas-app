@@ -3,7 +3,7 @@ import {
   ArrowDownCircle, ArrowUpCircle, CalendarDays, CircleDollarSign, FolderCog,
   LayoutDashboard, LogOut, Pencil, Plus, RefreshCw, Search, Settings, Settings2, Trash2,
   TrendingDown, TrendingUp, WalletCards, PiggyBank, ReceiptText, Download, Upload,
-  Eye, EyeOff, UserRound, Menu, ChevronDown, HelpCircle, Bell, Home, SlidersHorizontal, Keyboard, Palette, Target, CalendarRange, X, CreditCard, Repeat2, Undo2, AlertTriangle, CheckCircle2, Sparkles, BrainCircuit, MessageCircle, ShieldCheck
+  Eye, EyeOff, UserRound, Menu, ChevronDown, HelpCircle, Bell, Home, SlidersHorizontal, Keyboard, Palette, Target, CalendarRange, X, CreditCard, Repeat2, Undo2, AlertTriangle, CheckCircle2
 } from 'lucide-react'
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie,
@@ -282,11 +282,6 @@ export default function App() {
   const [undoAction, setUndoAction] = useState(null)
   const [dismissedNotifications, setDismissedNotifications] = useState([])
   const [readNotifications, setReadNotifications] = useState([])
-  const [aiAnalysis, setAiAnalysis] = useState(null)
-  const [aiAnalysisHistory, setAiAnalysisHistory] = useState([])
-  const [aiQuestion, setAiQuestion] = useState('')
-  const [aiLoading, setAiLoading] = useState(false)
-  const [aiError, setAiError] = useState('')
 
   useEffect(() => {
     if (!configured) {
@@ -2002,117 +1997,6 @@ export default function App() {
   )
 
 
-  useEffect(() => {
-    if (!configured || !session?.user?.id) {
-      setAiAnalysisHistory([])
-      return
-    }
-    let cancelled = false
-    supabase
-      .from('ai_financial_analyses')
-      .select('id, analysis_type, question, result, period_start, period_end, created_at')
-      .eq('user_id', session.user.id)
-      .order('created_at', { ascending: false })
-      .limit(8)
-      .then(({ data, error }) => {
-        if (cancelled || error) return
-        setAiAnalysisHistory(data || [])
-        if (!aiAnalysis && data?.[0]?.result) setAiAnalysis(data[0].result)
-      })
-    return () => { cancelled = true }
-  }, [session?.user?.id])
-
-  const buildAiFinancialSnapshot = () => {
-    const categoryExpenses = financeAnalysis.expenses.slice(0, 12).map(item => ({
-      categoria: item.name,
-      promedio_mensual: Math.round(item.averageMonthly),
-      maximo_mensual: Math.round(item.maxMonthly),
-      meses_activos: item.activeMonths,
-      cantidad_movimientos: item.count
-    }))
-    const categoryIncomes = financeAnalysis.incomes.slice(0, 8).map(item => ({
-      categoria: item.name,
-      promedio_mensual: Math.round(item.averageMonthly),
-      maximo_mensual: Math.round(item.maxMonthly),
-      meses_activos: item.activeMonths
-    }))
-    const recentMonths = financeAnalysis.analysisMonthTotals.slice(-8).map(item => ({
-      mes: item.month,
-      ingresos: Math.round(item.ingresos),
-      egresos_sin_ahorros: Math.round(item.egresos),
-      saldo: Math.round(item.ingresos - item.egresos)
-    }))
-    const activeRecurring = recurringPayments.filter(item => item.active !== false).map(item => ({
-      descripcion: item.name,
-      monto: Number(item.amount || 0),
-      dia: Number(item.day || 1),
-      categoria: item.category || 'Sin categoría'
-    }))
-    const pendingInstallments = creditPlans
-      .filter(item => Number(item.paid || 0) < Number(item.installments || 0))
-      .map(item => ({
-        descripcion: item.description,
-        tarjeta: item.card || 'Sin tarjeta',
-        cuota_actual: Number(item.paid || 0) + 1,
-        cuotas_totales: Number(item.installments || 0),
-        valor_cuota: Number(item.installment_amount || item.total / Math.max(Number(item.installments || 1), 1) || 0),
-        dia_vencimiento: Number(item.due_day || 10)
-      }))
-    return {
-      moneda: 'ARS',
-      periodo: {
-        desde: analysisMonths[0] || month,
-        hasta: analysisMonths.at(-1) || month,
-        mes_seleccionado: month
-      },
-      resumen_historico: recentMonths,
-      ingresos_por_categoria: categoryIncomes,
-      egresos_por_categoria: categoryExpenses,
-      pagos_recurrentes_activos: activeRecurring,
-      cuotas_pendientes: pendingInstallments,
-      metas_de_ahorro: savingsGoals.map(goal => ({
-        nombre: goal.name,
-        objetivo: Number(goal.target || 0),
-        acumulado: Number(goal.saved || goal.current || 0),
-        prioridad: Number(goal.priority || 0)
-      })),
-      cuentas: accounts.map(account => ({ nombre: account.name, saldo_inicial: Number(account.initial_balance || 0) })),
-      reglas: {
-        no_contar_transferencias_como_ingreso_o_egreso: true,
-        no_contar_aportes_a_ahorro_como_gasto_de_consumo: true,
-        no_inventar_datos_faltantes: true
-      }
-    }
-  }
-
-  const generateAiAnalysis = async ({ question = '', type = 'general' } = {}) => {
-    if (!configured || !session) {
-      setAiError('El análisis con IA requiere iniciar sesión y tener Supabase configurado.')
-      return
-    }
-    setAiLoading(true)
-    setAiError('')
-    try {
-      const { data, error } = await supabase.functions.invoke('financial-ai-analysis', {
-        body: {
-          type,
-          question: question.trim() || null,
-          snapshot: buildAiFinancialSnapshot()
-        }
-      })
-      if (error) throw error
-      if (!data?.analysis) throw new Error(data?.error || 'La función no devolvió un análisis válido.')
-      setAiAnalysis(data.analysis)
-      setAiQuestion('')
-      if (data.record) {
-        setAiAnalysisHistory(current => [data.record, ...current.filter(item => item.id !== data.record.id)].slice(0, 8))
-      }
-    } catch (error) {
-      setAiError(error?.message || 'No se pudo generar el análisis con IA.')
-    } finally {
-      setAiLoading(false)
-    }
-  }
 
   if (loading) return <div className="center"><RefreshCw className="spin" /> Cargando finanzas…</div>
   if (configured && !session) return <Auth supabase={supabase} />
@@ -3552,7 +3436,6 @@ export default function App() {
             </div>}
           </div>
           <button className={tab === 'analysis' ? 'active' : ''} onClick={() => setTab('analysis')} title="Análisis de finanzas"><CircleDollarSign /><span className="nav-label">ANÁLISIS DE FINANZAS</span></button>
-          <button className={tab === 'ai-analysis' ? 'active' : ''} onClick={() => setTab('ai-analysis')} title="Análisis con inteligencia artificial"><BrainCircuit /><span className="nav-label">ANÁLISIS CON IA</span></button>
           <button className={tab === 'goals' ? 'active' : ''} onClick={() => setTab('goals')} title="Metas de ahorro"><Target /><span className="nav-label">METAS DE AHORRO</span></button>
           <button className={tab === 'calendar' ? 'active' : ''} onClick={() => setTab('calendar')} title="Calendario financiero"><CalendarDays /><span className="nav-label">CALENDARIO FINANCIERO</span></button>
           <button className={tab === 'compare' ? 'active' : ''} onClick={() => setTab('compare')} title="Comparar meses"><RefreshCw /><span className="nav-label">COMPARAR MESES</span></button>
@@ -3565,12 +3448,11 @@ export default function App() {
       <div className="toolbar">
         {tab === 'analysis'
           ? <label>Período analizado <strong>{analysisMonths[0] || DATA_START} a {analysisMonths.at(-1) || DATA_START}</strong></label>
-          : tab === 'big-expenses' || tab === 'ai-analysis' || tab === 'savings' || tab === 'settings' || tab === 'calendar' || tab === 'compare' || tab === 'goals' || tab === 'control' || tab === 'account-management' || tab === 'recurring' || tab === 'credit'
+          : tab === 'big-expenses' || tab === 'savings' || tab === 'settings' || tab === 'calendar' || tab === 'compare' || tab === 'goals' || tab === 'control' || tab === 'account-management' || tab === 'recurring' || tab === 'credit'
             ? <span></span>
             : <label>Período <input type="month" value={month} onChange={e => setMonth(e.target.value)} /></label>}
         {tab === 'dashboard' && <small className="period-note"><CalendarDays /> Todos los indicadores corresponden al mes seleccionado</small>}
         {tab === 'analysis' && <small className="period-note"><CalendarDays /> Análisis histórico de todos los movimientos disponibles</small>}
-        {tab === 'ai-analysis' && <small className="period-note"><ShieldCheck /> La IA interpreta resúmenes numéricos; no modifica movimientos ni saldos</small>}
       </div>
 
       {tab === 'home' && <>
@@ -4051,80 +3933,6 @@ export default function App() {
       </>}
 
 
-      {tab === 'ai-analysis' && <>
-        <section className="ai-hero panel">
-          <div className="ai-hero-copy">
-            <span className="ai-eyebrow"><Sparkles /> ANÁLISIS FINANCIERO ASISTIDO</span>
-            <h1>Análisis con inteligencia artificial</h1>
-            <p>Interpreta tendencias, riesgos, gastos atípicos, pagos próximos y metas usando solamente los datos resumidos de la cuenta.</p>
-          </div>
-          <button className="ai-primary-button" type="button" disabled={aiLoading} onClick={() => generateAiAnalysis({ type:'general' })}>
-            {aiLoading ? <RefreshCw className="spin" /> : <BrainCircuit />}
-            {aiLoading ? 'Analizando…' : aiAnalysis ? 'Actualizar análisis' : 'Generar análisis'}
-          </button>
-        </section>
-
-        {aiError && <div className="ai-error"><AlertTriangle /> <span>{aiError}</span></div>}
-
-        {!aiAnalysis && !aiLoading && <section className="panel ai-empty-state">
-          <BrainCircuit />
-          <h2>Todavía no hay un análisis generado</h2>
-          <p>Al generar el análisis se evaluarán ingresos, egresos, pagos recurrentes, cuotas y metas sin enviar descripciones sensibles de movimientos individuales.</p>
-          <button type="button" onClick={() => generateAiAnalysis({ type:'general' })}><Sparkles /> Generar primer análisis</button>
-        </section>}
-
-        {aiAnalysis && <>
-          <section className="ai-summary-grid">
-            <article className="panel ai-main-summary">
-              <div className="ai-card-title"><BrainCircuit /><div><h2>Resumen general</h2><span>{aiAnalysis.periodo_analizado || `${analysisMonths[0] || month} a ${analysisMonths.at(-1) || month}`}</span></div></div>
-              <p className="ai-summary-text">{aiAnalysis.resumen}</p>
-              {aiAnalysis.diagnostico && <div className="ai-diagnosis"><b>Diagnóstico</b><span>{aiAnalysis.diagnostico}</span></div>}
-            </article>
-            <article className="panel ai-health-card">
-              <span>Estado financiero</span>
-              <strong>{aiAnalysis.estado_financiero || 'Sin clasificación'}</strong>
-              <small>{aiAnalysis.nivel_riesgo ? `Riesgo ${aiAnalysis.nivel_riesgo}` : 'Evaluación orientativa'}</small>
-            </article>
-          </section>
-
-          <section className="ai-columns">
-            <article className="panel ai-list-card">
-              <div className="ai-card-title"><AlertTriangle /><div><h3>Alertas importantes</h3><span>Situaciones que requieren atención</span></div></div>
-              <div className="ai-item-list">
-                {(aiAnalysis.alertas || []).map((item,index)=><div className="ai-list-item warning" key={`alert-${index}`}><span>{index+1}</span><p>{typeof item === 'string' ? item : item.texto || item.descripcion}</p></div>)}
-                {!aiAnalysis.alertas?.length && <div className="empty-card">No se detectaron alertas relevantes.</div>}
-              </div>
-            </article>
-            <article className="panel ai-list-card">
-              <div className="ai-card-title"><CheckCircle2 /><div><h3>Recomendaciones</h3><span>Acciones concretas y prudentes</span></div></div>
-              <div className="ai-item-list">
-                {(aiAnalysis.recomendaciones || []).map((item,index)=><div className="ai-list-item positive" key={`rec-${index}`}><span>{index+1}</span><p>{typeof item === 'string' ? item : item.texto || item.descripcion}</p></div>)}
-                {!aiAnalysis.recomendaciones?.length && <div className="empty-card">No hay recomendaciones disponibles.</div>}
-              </div>
-            </article>
-          </section>
-
-          {!!aiAnalysis.hallazgos?.length && <section className="panel ai-findings">
-            <div className="ai-card-title"><TrendingUp /><div><h3>Hallazgos principales</h3><span>Patrones detectados en los datos disponibles</span></div></div>
-            <div className="ai-finding-grid">{aiAnalysis.hallazgos.map((item,index)=><article key={`finding-${index}`}><b>{item.titulo || `Hallazgo ${index+1}`}</b><p>{item.detalle || item.descripcion || item}</p>{item.dato && <small>{item.dato}</small>}</article>)}</div>
-          </section>}
-        </>}
-
-        <section className="panel ai-question-panel">
-          <div className="ai-card-title"><MessageCircle /><div><h3>Preguntar sobre las finanzas</h3><span>La respuesta se limita a los datos resumidos que ya calcula la aplicación</span></div></div>
-          <form onSubmit={event => { event.preventDefault(); if (aiQuestion.trim()) generateAiAnalysis({ question: aiQuestion, type:'question' }) }}>
-            <textarea value={aiQuestion} onChange={event=>setAiQuestion(event.target.value)} placeholder="Ej.: ¿Por qué aumentaron mis gastos? ¿Qué pagos debo priorizar el próximo mes?" rows="3" maxLength="500" />
-            <div><small>{aiQuestion.length}/500</small><button type="submit" disabled={aiLoading || !aiQuestion.trim()}>{aiLoading ? <RefreshCw className="spin"/> : <Sparkles/>} Analizar pregunta</button></div>
-          </form>
-        </section>
-
-        {!!aiAnalysisHistory.length && <section className="panel ai-history-panel">
-          <div className="panel-title"><div><h3>Historial reciente</h3><span>Últimos análisis guardados en Supabase</span></div></div>
-          <div className="ai-history-list">{aiAnalysisHistory.map(item=><button type="button" key={item.id} onClick={()=>setAiAnalysis(item.result)}><div><b>{item.analysis_type === 'question' ? item.question || 'Pregunta personalizada' : 'Análisis general'}</b><span>{new Date(item.created_at).toLocaleString('es-AR')}</span></div><ChevronDown /></button>)}</div>
-        </section>}
-
-        <section className="ai-privacy-note"><ShieldCheck /><div><b>Privacidad y control</b><span>La clave de OpenAI permanece protegida en una Supabase Edge Function. La IA no puede crear, editar ni eliminar movimientos.</span></div></section>
-      </>}
 
       {tab === 'big-expenses' && <>
         <section className="panel unusual-expenses-panel">
