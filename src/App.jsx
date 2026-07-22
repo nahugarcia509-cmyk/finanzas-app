@@ -776,6 +776,49 @@ export default function App() {
     setNotice('Transferencia registrada sin afectar ingresos ni egresos.')
   }
 
+  const removeTransfer = (transfer) => {
+    const movementIds = Array.isArray(transfer?.movementIds) ? transfer.movementIds.filter(Boolean) : []
+    if (!movementIds.length) {
+      setNotice('No se pudieron identificar los movimientos asociados a esta transferencia.')
+      return
+    }
+
+    requestConfirm({
+      title: 'Eliminar transferencia',
+      message: `Se eliminará la transferencia “${transfer.description || 'seleccionada'}” por ${money(transfer.amount || 0)}. Se borrarán tanto el movimiento de salida como el de entrada.`,
+      confirmLabel: 'Eliminar transferencia',
+      tone: 'danger',
+      onConfirm: async () => {
+        if (!configured) {
+          const next = movements.filter(movement => !movementIds.includes(movement.id))
+          setMovements(next)
+          localStorage.setItem('finance_demo', JSON.stringify(next))
+          setNotice('Transferencia eliminada.')
+          return
+        }
+
+        if (!session?.user?.id) {
+          setNotice('No existe una sesión activa.')
+          return
+        }
+
+        const { error } = await supabase
+          .from('transactions')
+          .delete()
+          .in('id', movementIds)
+          .eq('user_id', session.user.id)
+
+        if (error) {
+          setNotice(error.message)
+          return
+        }
+
+        setMovements(current => current.filter(movement => !movementIds.includes(movement.id)))
+        setNotice('Transferencia eliminada correctamente.')
+      }
+    })
+  }
+
   const accountBalance = (accountId) => {
     const account = accounts.find(a => a.id === accountId)
     if (!account) return 0
@@ -2001,13 +2044,15 @@ export default function App() {
         description: movement.description || 'Transferencia entre cuentas',
         amount: Number(movement.amount) || 0,
         from: 'Sin cuenta',
-        to: 'Sin cuenta'
+        to: 'Sin cuenta',
+        movementIds: []
       }
       const accountName = movement.accounts?.name || accounts.find(account => account.id === movement.account_id)?.name || 'Sin cuenta'
       if (notes.includes(TRANSFER_OUT)) current.from = accountName
       if (notes.includes(TRANSFER_IN)) current.to = accountName
       if (!current.date || String(movement.date || '') > current.date) current.date = movement.date
       current.amount = Math.max(current.amount, Number(movement.amount) || 0)
+      if (!current.movementIds.includes(movement.id)) current.movementIds.push(movement.id)
       groups.set(transferId, current)
     })
     return [...groups.values()].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
@@ -4312,9 +4357,9 @@ export default function App() {
 
           <article className="panel account-transfer-history">
             <div className="panel-title"><div><h3>Últimas transferencias</h3><span>Movimientos recientes entre cuentas</span></div></div>
-            <div className="account-transfer-table-wrap"><table><thead><tr><th>Fecha</th><th>Origen</th><th>Destino</th><th>Descripción</th><th className="right">Monto</th></tr></thead><tbody>
-              {transferHistory.slice(0, 8).map(item => <tr key={item.id}><td>{item.date?.split('-').reverse().join('/')}</td><td>{item.from}</td><td>{item.to}</td><td>{item.description}</td><td className="right positive"><b>{money(item.amount)}</b></td></tr>)}
-              {!transferHistory.length && <tr><td colSpan="5" className="empty">Todavía no existen transferencias entre cuentas.</td></tr>}
+            <div className="account-transfer-table-wrap"><table><thead><tr><th>Fecha</th><th>Origen</th><th>Destino</th><th>Descripción</th><th className="right">Monto</th><th aria-label="Acciones"></th></tr></thead><tbody>
+              {transferHistory.slice(0, 8).map(item => <tr key={item.id}><td>{item.date?.split('-').reverse().join('/')}</td><td>{item.from}</td><td>{item.to}</td><td>{item.description}</td><td className="right positive"><b>{money(item.amount)}</b></td><td><div className="row-actions"><button type="button" className="ghost danger" onClick={() => removeTransfer(item)} aria-label={`Eliminar transferencia ${item.description}`} title="Eliminar transferencia"><Trash2 /></button></div></td></tr>)}
+              {!transferHistory.length && <tr><td colSpan="6" className="empty">Todavía no existen transferencias entre cuentas.</td></tr>}
             </tbody></table></div>
           </article>
         </section>
