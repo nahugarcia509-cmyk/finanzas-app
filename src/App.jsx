@@ -3,7 +3,7 @@ import {
   ArrowDownCircle, ArrowUpCircle, CalendarDays, CircleDollarSign, FolderCog,
   LayoutDashboard, LogOut, Pencil, Plus, RefreshCw, Search, Settings, Settings2, Trash2,
   TrendingDown, TrendingUp, WalletCards, PiggyBank, ReceiptText, Download, Upload,
-  Eye, EyeOff, UserRound, Menu, ChevronDown, HelpCircle, Bell, Home, SlidersHorizontal, Keyboard, Palette, Target, CalendarRange, X, CreditCard, Repeat2, Undo2, AlertTriangle, CheckCircle2
+  Eye, EyeOff, UserRound, Menu, ChevronDown, HelpCircle, Bell, Home, SlidersHorizontal, Keyboard, Palette, Target, CalendarRange, X, CreditCard, Repeat2, Undo2, AlertTriangle, CheckCircle2, Sparkles, BrainCircuit, MessageCircle, ShieldCheck
 } from 'lucide-react'
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie,
@@ -282,6 +282,11 @@ export default function App() {
   const [undoAction, setUndoAction] = useState(null)
   const [dismissedNotifications, setDismissedNotifications] = useState([])
   const [readNotifications, setReadNotifications] = useState([])
+  const [aiAnalysis, setAiAnalysis] = useState(null)
+  const [aiAnalysisHistory, setAiAnalysisHistory] = useState([])
+  const [aiQuestion, setAiQuestion] = useState('')
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError] = useState('')
 
   useEffect(() => {
     if (!configured) {
@@ -1996,6 +2001,119 @@ export default function App() {
     [transferHistory, month]
   )
 
+
+  useEffect(() => {
+    if (!configured || !session?.user?.id) {
+      setAiAnalysisHistory([])
+      return
+    }
+    let cancelled = false
+    supabase
+      .from('ai_financial_analyses')
+      .select('id, analysis_type, question, result, period_start, period_end, created_at')
+      .eq('user_id', session.user.id)
+      .order('created_at', { ascending: false })
+      .limit(8)
+      .then(({ data, error }) => {
+        if (cancelled || error) return
+        setAiAnalysisHistory(data || [])
+        if (!aiAnalysis && data?.[0]?.result) setAiAnalysis(data[0].result)
+      })
+    return () => { cancelled = true }
+  }, [session?.user?.id])
+
+  const buildAiFinancialSnapshot = () => {
+    const categoryExpenses = financeAnalysis.expenses.slice(0, 12).map(item => ({
+      categoria: item.name,
+      promedio_mensual: Math.round(item.averageMonthly),
+      maximo_mensual: Math.round(item.maxMonthly),
+      meses_activos: item.activeMonths,
+      cantidad_movimientos: item.count
+    }))
+    const categoryIncomes = financeAnalysis.incomes.slice(0, 8).map(item => ({
+      categoria: item.name,
+      promedio_mensual: Math.round(item.averageMonthly),
+      maximo_mensual: Math.round(item.maxMonthly),
+      meses_activos: item.activeMonths
+    }))
+    const recentMonths = financeAnalysis.analysisMonthTotals.slice(-8).map(item => ({
+      mes: item.month,
+      ingresos: Math.round(item.ingresos),
+      egresos_sin_ahorros: Math.round(item.egresos),
+      saldo: Math.round(item.ingresos - item.egresos)
+    }))
+    const activeRecurring = recurringPayments.filter(item => item.active !== false).map(item => ({
+      descripcion: item.name,
+      monto: Number(item.amount || 0),
+      dia: Number(item.day || 1),
+      categoria: item.category || 'Sin categoría'
+    }))
+    const pendingInstallments = creditPlans
+      .filter(item => Number(item.paid || 0) < Number(item.installments || 0))
+      .map(item => ({
+        descripcion: item.description,
+        tarjeta: item.card || 'Sin tarjeta',
+        cuota_actual: Number(item.paid || 0) + 1,
+        cuotas_totales: Number(item.installments || 0),
+        valor_cuota: Number(item.installment_amount || item.total / Math.max(Number(item.installments || 1), 1) || 0),
+        dia_vencimiento: Number(item.due_day || 10)
+      }))
+    return {
+      moneda: 'ARS',
+      periodo: {
+        desde: analysisMonths[0] || month,
+        hasta: analysisMonths.at(-1) || month,
+        mes_seleccionado: month
+      },
+      resumen_historico: recentMonths,
+      ingresos_por_categoria: categoryIncomes,
+      egresos_por_categoria: categoryExpenses,
+      pagos_recurrentes_activos: activeRecurring,
+      cuotas_pendientes: pendingInstallments,
+      metas_de_ahorro: savingsGoals.map(goal => ({
+        nombre: goal.name,
+        objetivo: Number(goal.target || 0),
+        acumulado: Number(goal.saved || goal.current || 0),
+        prioridad: Number(goal.priority || 0)
+      })),
+      cuentas: accounts.map(account => ({ nombre: account.name, saldo_inicial: Number(account.initial_balance || 0) })),
+      reglas: {
+        no_contar_transferencias_como_ingreso_o_egreso: true,
+        no_contar_aportes_a_ahorro_como_gasto_de_consumo: true,
+        no_inventar_datos_faltantes: true
+      }
+    }
+  }
+
+  const generateAiAnalysis = async ({ question = '', type = 'general' } = {}) => {
+    if (!configured || !session) {
+      setAiError('El análisis con IA requiere iniciar sesión y tener Supabase configurado.')
+      return
+    }
+    setAiLoading(true)
+    setAiError('')
+    try {
+      const { data, error } = await supabase.functions.invoke('financial-ai-analysis', {
+        body: {
+          type,
+          question: question.trim() || null,
+          snapshot: buildAiFinancialSnapshot()
+        }
+      })
+      if (error) throw error
+      if (!data?.analysis) throw new Error(data?.error || 'La función no devolvió un análisis válido.')
+      setAiAnalysis(data.analysis)
+      setAiQuestion('')
+      if (data.record) {
+        setAiAnalysisHistory(current => [data.record, ...current.filter(item => item.id !== data.record.id)].slice(0, 8))
+      }
+    } catch (error) {
+      setAiError(error?.message || 'No se pudo generar el análisis con IA.')
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
   if (loading) return <div className="center"><RefreshCw className="spin" /> Cargando finanzas…</div>
   if (configured && !session) return <Auth supabase={supabase} />
 
@@ -3368,6 +3486,25 @@ export default function App() {
         .forecast-expandable-row>.forecast-recurring-heading{min-width:0;flex:1}
         .forecast-expandable-row>b{flex:0 0 auto;padding-top:1px}
         .forecast-recurring-detail .positive,.forecast-recurring-detail .negative{font-weight:900}
+
+      /* Análisis con IA */
+      .ai-hero{display:flex;align-items:center;justify-content:space-between;gap:28px;padding:28px;margin-bottom:18px;background:linear-gradient(135deg,rgba(56,189,248,.10),rgba(167,139,250,.08));overflow:visible}
+      .ai-hero-copy{max-width:780px}.ai-hero-copy h1{margin:8px 0 8px;font-size:clamp(24px,3vw,38px)}.ai-hero-copy p{margin:0;color:var(--muted);line-height:1.6}
+      .ai-eyebrow{display:inline-flex;align-items:center;gap:8px;color:#7dd3fc;font-size:12px;font-weight:900;letter-spacing:.08em}.ai-eyebrow svg{width:17px}
+      .ai-primary-button{display:flex;align-items:center;justify-content:center;gap:10px;min-width:210px;padding:14px 18px;border-radius:14px;background:linear-gradient(135deg,#38bdf8,#818cf8);color:#04111f;font-weight:900;border:0}.ai-primary-button svg{width:20px}
+      .ai-error{display:flex;align-items:center;gap:10px;padding:14px 16px;margin-bottom:16px;border:1px solid rgba(251,113,133,.45);background:rgba(251,113,133,.09);border-radius:14px;color:#fecdd3}.ai-error svg{width:20px}
+      .ai-empty-state{text-align:center;padding:55px 24px}.ai-empty-state>svg{width:58px;height:58px;color:#38bdf8;margin-bottom:12px}.ai-empty-state h2{margin:0 0 8px}.ai-empty-state p{max-width:680px;margin:0 auto 20px;color:var(--muted);line-height:1.6}.ai-empty-state button{display:inline-flex;align-items:center;gap:8px}
+      .ai-summary-grid{display:grid;grid-template-columns:minmax(0,2.3fr) minmax(240px,.7fr);gap:16px;margin-bottom:16px}.ai-main-summary,.ai-health-card,.ai-list-card,.ai-findings,.ai-question-panel,.ai-history-panel{padding:22px}
+      .ai-card-title{display:flex;align-items:flex-start;gap:12px;margin-bottom:16px}.ai-card-title>svg{width:24px;height:24px;color:#38bdf8;flex:0 0 auto}.ai-card-title h2,.ai-card-title h3{margin:0}.ai-card-title span{display:block;color:var(--muted);font-size:13px;margin-top:3px}
+      .ai-summary-text{font-size:17px;line-height:1.75;margin:0;color:var(--text)}.ai-diagnosis{display:grid;gap:5px;margin-top:18px;padding:14px 16px;border-radius:12px;background:rgba(56,189,248,.07);border:1px solid rgba(56,189,248,.18)}.ai-diagnosis span{color:var(--muted);line-height:1.5}
+      .ai-health-card{display:flex;flex-direction:column;justify-content:center;background:linear-gradient(145deg,rgba(74,222,128,.09),rgba(56,189,248,.06))}.ai-health-card>span{color:var(--muted)}.ai-health-card>strong{font-size:28px;margin:10px 0;color:#4ade80}.ai-health-card>small{color:var(--muted)}
+      .ai-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-bottom:16px}.ai-item-list{display:grid;gap:10px}.ai-list-item{display:flex;gap:12px;align-items:flex-start;padding:13px;border-radius:12px;border:1px solid var(--border);background:rgba(255,255,255,.015)}.ai-list-item>span{display:grid;place-items:center;min-width:25px;height:25px;border-radius:50%;font-weight:900}.ai-list-item p{margin:2px 0 0;line-height:1.5}.ai-list-item.warning>span{background:rgba(251,113,133,.15);color:#fb7185}.ai-list-item.positive>span{background:rgba(74,222,128,.14);color:#4ade80}
+      .ai-findings{margin-bottom:16px}.ai-finding-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.ai-finding-grid article{padding:16px;border:1px solid var(--border);border-radius:13px;background:rgba(255,255,255,.018)}.ai-finding-grid p{color:var(--muted);line-height:1.5}.ai-finding-grid small{color:#7dd3fc;font-weight:800}
+      .ai-question-panel{margin-bottom:16px}.ai-question-panel form{display:grid;gap:10px}.ai-question-panel textarea{width:100%;resize:vertical;min-height:92px}.ai-question-panel form>div{display:flex;justify-content:space-between;align-items:center}.ai-question-panel button{display:flex;align-items:center;gap:8px}.ai-question-panel small{color:var(--muted)}
+      .ai-history-list{display:grid;gap:8px}.ai-history-list>button{display:flex;align-items:center;justify-content:space-between;text-align:left;padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:rgba(255,255,255,.015);color:var(--text)}.ai-history-list>button div{display:grid;gap:3px}.ai-history-list span{color:var(--muted);font-size:12px}.ai-history-list svg{width:18px;transform:rotate(-90deg)}
+      .ai-privacy-note{display:flex;gap:12px;align-items:flex-start;padding:15px 18px;border:1px solid rgba(74,222,128,.25);border-radius:14px;background:rgba(74,222,128,.05);margin:16px 0 30px}.ai-privacy-note svg{color:#4ade80;flex:0 0 auto}.ai-privacy-note div{display:grid;gap:4px}.ai-privacy-note span{color:var(--muted);line-height:1.45}
+      @media(max-width:1180px){.ai-summary-grid{grid-template-columns:1fr}.ai-columns{grid-template-columns:1fr}.ai-finding-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.ai-hero{align-items:flex-start}.ai-primary-button{min-width:190px}}
+      @media(max-width:760px){.ai-hero{display:grid;padding:20px}.ai-primary-button{width:100%}.ai-finding-grid{grid-template-columns:1fr}.ai-main-summary,.ai-health-card,.ai-list-card,.ai-findings,.ai-question-panel,.ai-history-panel{padding:17px}.ai-summary-text{font-size:15px}.ai-question-panel form>div{align-items:flex-end;gap:10px}.ai-question-panel button{justify-content:center}.ai-privacy-note{margin-bottom:90px}}
     `}</style>
     <header><div className="brand"><div className="brand-icon"><WalletCards /></div><div><b>Mis Finanzas</b><small>Información sincronizada y siempre disponible</small></div></div><div className="header-actions"><button className={`ghost header-icon ${filtersOpen || Object.values(filters).some(v => v && v !== 'all') ? 'active' : ''}`} onClick={() => { setFilterDraft(filters); setFiltersOpen(true) }} title="Filtros"><SlidersHorizontal />{Object.values(filters).some(v => v && v !== 'all') && <span className="filter-dot" />}</button><button className={`ghost header-icon ${notificationsOpen ? 'active' : ''}`} onClick={() => setNotificationsOpen(true)} title="Notificaciones"><Bell />{unreadNotifications.length > 0 && <span className="notification-badge">{unreadNotifications.length}</span>}</button><button className="secondary" onClick={() => openNew('income')}><ArrowUpCircle /> Ingreso</button><button onClick={() => openNew('expense')}><ArrowDownCircle /> Egreso</button>{isMobileViewport && <button className="ghost mobile-quick-return" onClick={() => setMobileQuickMode(true)} title="Vista rápida"><Home /></button>}{configured && <button className="ghost" onClick={() => supabase.auth.signOut()} title="Cerrar sesión" aria-label="Cerrar sesión"><LogOut /></button>}</div></header>
     {isMobileViewport && !mobileQuickMode && <button type="button" className="mobile-quick-floating-return" onClick={() => setMobileQuickMode(true)} aria-label="Volver a vista rápida"><Home /> Vista rápida</button>}
@@ -3415,6 +3552,7 @@ export default function App() {
             </div>}
           </div>
           <button className={tab === 'analysis' ? 'active' : ''} onClick={() => setTab('analysis')} title="Análisis de finanzas"><CircleDollarSign /><span className="nav-label">ANÁLISIS DE FINANZAS</span></button>
+          <button className={tab === 'ai-analysis' ? 'active' : ''} onClick={() => setTab('ai-analysis')} title="Análisis con inteligencia artificial"><BrainCircuit /><span className="nav-label">ANÁLISIS CON IA</span></button>
           <button className={tab === 'goals' ? 'active' : ''} onClick={() => setTab('goals')} title="Metas de ahorro"><Target /><span className="nav-label">METAS DE AHORRO</span></button>
           <button className={tab === 'calendar' ? 'active' : ''} onClick={() => setTab('calendar')} title="Calendario financiero"><CalendarDays /><span className="nav-label">CALENDARIO FINANCIERO</span></button>
           <button className={tab === 'compare' ? 'active' : ''} onClick={() => setTab('compare')} title="Comparar meses"><RefreshCw /><span className="nav-label">COMPARAR MESES</span></button>
@@ -3427,11 +3565,12 @@ export default function App() {
       <div className="toolbar">
         {tab === 'analysis'
           ? <label>Período analizado <strong>{analysisMonths[0] || DATA_START} a {analysisMonths.at(-1) || DATA_START}</strong></label>
-          : tab === 'big-expenses' || tab === 'savings' || tab === 'settings' || tab === 'calendar' || tab === 'compare' || tab === 'goals' || tab === 'control' || tab === 'account-management' || tab === 'recurring' || tab === 'credit'
+          : tab === 'big-expenses' || tab === 'ai-analysis' || tab === 'savings' || tab === 'settings' || tab === 'calendar' || tab === 'compare' || tab === 'goals' || tab === 'control' || tab === 'account-management' || tab === 'recurring' || tab === 'credit'
             ? <span></span>
             : <label>Período <input type="month" value={month} onChange={e => setMonth(e.target.value)} /></label>}
         {tab === 'dashboard' && <small className="period-note"><CalendarDays /> Todos los indicadores corresponden al mes seleccionado</small>}
         {tab === 'analysis' && <small className="period-note"><CalendarDays /> Análisis histórico de todos los movimientos disponibles</small>}
+        {tab === 'ai-analysis' && <small className="period-note"><ShieldCheck /> La IA interpreta resúmenes numéricos; no modifica movimientos ni saldos</small>}
       </div>
 
       {tab === 'home' && <>
@@ -3909,6 +4048,82 @@ export default function App() {
             </table>
           </div>
         </section>
+      </>}
+
+
+      {tab === 'ai-analysis' && <>
+        <section className="ai-hero panel">
+          <div className="ai-hero-copy">
+            <span className="ai-eyebrow"><Sparkles /> ANÁLISIS FINANCIERO ASISTIDO</span>
+            <h1>Análisis con inteligencia artificial</h1>
+            <p>Interpreta tendencias, riesgos, gastos atípicos, pagos próximos y metas usando solamente los datos resumidos de la cuenta.</p>
+          </div>
+          <button className="ai-primary-button" type="button" disabled={aiLoading} onClick={() => generateAiAnalysis({ type:'general' })}>
+            {aiLoading ? <RefreshCw className="spin" /> : <BrainCircuit />}
+            {aiLoading ? 'Analizando…' : aiAnalysis ? 'Actualizar análisis' : 'Generar análisis'}
+          </button>
+        </section>
+
+        {aiError && <div className="ai-error"><AlertTriangle /> <span>{aiError}</span></div>}
+
+        {!aiAnalysis && !aiLoading && <section className="panel ai-empty-state">
+          <BrainCircuit />
+          <h2>Todavía no hay un análisis generado</h2>
+          <p>Al generar el análisis se evaluarán ingresos, egresos, pagos recurrentes, cuotas y metas sin enviar descripciones sensibles de movimientos individuales.</p>
+          <button type="button" onClick={() => generateAiAnalysis({ type:'general' })}><Sparkles /> Generar primer análisis</button>
+        </section>}
+
+        {aiAnalysis && <>
+          <section className="ai-summary-grid">
+            <article className="panel ai-main-summary">
+              <div className="ai-card-title"><BrainCircuit /><div><h2>Resumen general</h2><span>{aiAnalysis.periodo_analizado || `${analysisMonths[0] || month} a ${analysisMonths.at(-1) || month}`}</span></div></div>
+              <p className="ai-summary-text">{aiAnalysis.resumen}</p>
+              {aiAnalysis.diagnostico && <div className="ai-diagnosis"><b>Diagnóstico</b><span>{aiAnalysis.diagnostico}</span></div>}
+            </article>
+            <article className="panel ai-health-card">
+              <span>Estado financiero</span>
+              <strong>{aiAnalysis.estado_financiero || 'Sin clasificación'}</strong>
+              <small>{aiAnalysis.nivel_riesgo ? `Riesgo ${aiAnalysis.nivel_riesgo}` : 'Evaluación orientativa'}</small>
+            </article>
+          </section>
+
+          <section className="ai-columns">
+            <article className="panel ai-list-card">
+              <div className="ai-card-title"><AlertTriangle /><div><h3>Alertas importantes</h3><span>Situaciones que requieren atención</span></div></div>
+              <div className="ai-item-list">
+                {(aiAnalysis.alertas || []).map((item,index)=><div className="ai-list-item warning" key={`alert-${index}`}><span>{index+1}</span><p>{typeof item === 'string' ? item : item.texto || item.descripcion}</p></div>)}
+                {!aiAnalysis.alertas?.length && <div className="empty-card">No se detectaron alertas relevantes.</div>}
+              </div>
+            </article>
+            <article className="panel ai-list-card">
+              <div className="ai-card-title"><CheckCircle2 /><div><h3>Recomendaciones</h3><span>Acciones concretas y prudentes</span></div></div>
+              <div className="ai-item-list">
+                {(aiAnalysis.recomendaciones || []).map((item,index)=><div className="ai-list-item positive" key={`rec-${index}`}><span>{index+1}</span><p>{typeof item === 'string' ? item : item.texto || item.descripcion}</p></div>)}
+                {!aiAnalysis.recomendaciones?.length && <div className="empty-card">No hay recomendaciones disponibles.</div>}
+              </div>
+            </article>
+          </section>
+
+          {!!aiAnalysis.hallazgos?.length && <section className="panel ai-findings">
+            <div className="ai-card-title"><TrendingUp /><div><h3>Hallazgos principales</h3><span>Patrones detectados en los datos disponibles</span></div></div>
+            <div className="ai-finding-grid">{aiAnalysis.hallazgos.map((item,index)=><article key={`finding-${index}`}><b>{item.titulo || `Hallazgo ${index+1}`}</b><p>{item.detalle || item.descripcion || item}</p>{item.dato && <small>{item.dato}</small>}</article>)}</div>
+          </section>}
+        </>}
+
+        <section className="panel ai-question-panel">
+          <div className="ai-card-title"><MessageCircle /><div><h3>Preguntar sobre las finanzas</h3><span>La respuesta se limita a los datos resumidos que ya calcula la aplicación</span></div></div>
+          <form onSubmit={event => { event.preventDefault(); if (aiQuestion.trim()) generateAiAnalysis({ question: aiQuestion, type:'question' }) }}>
+            <textarea value={aiQuestion} onChange={event=>setAiQuestion(event.target.value)} placeholder="Ej.: ¿Por qué aumentaron mis gastos? ¿Qué pagos debo priorizar el próximo mes?" rows="3" maxLength="500" />
+            <div><small>{aiQuestion.length}/500</small><button type="submit" disabled={aiLoading || !aiQuestion.trim()}>{aiLoading ? <RefreshCw className="spin"/> : <Sparkles/>} Analizar pregunta</button></div>
+          </form>
+        </section>
+
+        {!!aiAnalysisHistory.length && <section className="panel ai-history-panel">
+          <div className="panel-title"><div><h3>Historial reciente</h3><span>Últimos análisis guardados en Supabase</span></div></div>
+          <div className="ai-history-list">{aiAnalysisHistory.map(item=><button type="button" key={item.id} onClick={()=>setAiAnalysis(item.result)}><div><b>{item.analysis_type === 'question' ? item.question || 'Pregunta personalizada' : 'Análisis general'}</b><span>{new Date(item.created_at).toLocaleString('es-AR')}</span></div><ChevronDown /></button>)}</div>
+        </section>}
+
+        <section className="ai-privacy-note"><ShieldCheck /><div><b>Privacidad y control</b><span>La clave de OpenAI permanece protegida en una Supabase Edge Function. La IA no puede crear, editar ni eliminar movimientos.</span></div></section>
       </>}
 
       {tab === 'big-expenses' && <>
