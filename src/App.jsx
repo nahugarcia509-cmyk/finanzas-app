@@ -80,9 +80,6 @@ function CategoryBreakdown({ title, rows, type }) {
   }, {})).sort((a,b) => b.total-a.total), [rows])
   return <section className="panel breakdown-section">
     <div className="panel-title"><div><h3>{title}</h3><span>{grouped.length} categorías · {rows.length} movimientos</span></div></div>
-    <div className="category-table-grid">
-      {grouped.map(group => <article className={`category-detail-card ${type}`} key={group.name}>
-    
     <style>{`
       /* Formato único para todas las cards KPI */
       .kpi-info-card,
@@ -145,7 +142,9 @@ function CategoryBreakdown({ title, rows, type }) {
       article[data-help]::before,
       article[data-help]::after { display:none !important; content:none !important; }
     `}</style>
-    <header><b>{group.name}</b><strong>{money(group.total)}</strong></header>
+    <div className="category-table-grid">
+      {grouped.map(group => <article className={`category-detail-card ${type}`} key={group.name}>
+        <header><b>{group.name}</b><strong>{money(group.total)}</strong></header>
         <div className="category-detail-body">
           {group.items.sort((a,b)=>a.date.localeCompare(b.date)).map(item => <div className="concept-row" key={item.id}>
             <div><span>{item.description}</span><small>{item.date?.split('-').reverse().join('/')}</small></div>
@@ -504,11 +503,14 @@ export default function App() {
     setDataLoading(true)
     try {
       const currentUserId = session.user.id
+      const recentCutoff = new Date()
+      recentCutoff.setMonth(recentCutoff.getMonth() - 12)
+      const recentFrom = recentCutoff.toISOString().slice(0, 10)
 
       const fetchUserData = () => Promise.all([
         supabase.from('accounts').select('*').eq('user_id', currentUserId).order('name'),
         supabase.from('categories').select('*').eq('user_id', currentUserId).order('type').order('name'),
-        supabase.from('transactions').select('*,accounts(name),categories(name)').eq('user_id', currentUserId).order('date', { ascending: false }),
+        supabase.from('transactions').select('*,accounts(name),categories(name)').eq('user_id', currentUserId).gte('date', recentFrom).order('date', { ascending: false }),
         supabase.from('user_settings').select('opening_balance_month,opening_balance_amount,theme,background_theme,sidebar_open,selected_income_categories,selected_reserve_categories,selected_forecast_categories,savings_goals').eq('user_id', currentUserId).maybeSingle(),
         supabase.from('recurring_payments').select('*').eq('user_id', currentUserId).order('day').order('name'),
         supabase.from('credit_plans').select('*').eq('user_id', currentUserId).order('created_at', { ascending: false }),
@@ -519,9 +521,6 @@ export default function App() {
       const firstError = [a, c, m, settingsResult, recurringResult, creditResult, notificationResult].find(result => result.error)?.error
       if (firstError) throw new Error(firstError.message)
 
-      // bootstrap_user se ejecuta únicamente para una cuenta realmente nueva.
-      // No se llama después de editar o eliminar cuentas, porque la función podía
-      // volver a crear la cuenta predeterminada "Billetera" por su nombre anterior.
       const isBrandNewUser = !settingsResult.data && !(a.data || []).length && !(c.data || []).length
       if (isBrandNewUser) {
         const { error: bootstrapError } = await supabase.rpc('bootstrap_user')
@@ -533,12 +532,12 @@ export default function App() {
 
       const ownAccounts = (a.data || []).filter(row => row.user_id === currentUserId)
       const ownCategories = (c.data || []).filter(row => row.user_id === currentUserId)
-      const ownMovements = (m.data || []).filter(row => row.user_id === currentUserId)
+      const recentMovements = (m.data || []).filter(row => row.user_id === currentUserId)
       const loadedSettings = settingsResult.data || { opening_balance_month: '', opening_balance_amount: 0, theme: 'blue', background_theme: 'navy', sidebar_open: true, selected_income_categories: null, selected_reserve_categories: null, selected_forecast_categories: null, savings_goals: [] }
 
       setAccounts(ownAccounts)
       setCategories(ownCategories)
-      setMovements(ownMovements)
+      setMovements(recentMovements)
       setUserSettings(loadedSettings)
       setSettingsDraft({
         opening_balance_month: loadedSettings.opening_balance_month || '',
@@ -566,6 +565,26 @@ export default function App() {
         from_account_id: current.from_account_id || ownAccounts[0]?.id || '',
         to_account_id: current.to_account_id || ownAccounts[0]?.id || ''
       }))
+
+      // El historial anterior se incorpora después del primer render para no bloquear el inicio.
+      const loadOlderHistory = async () => {
+        const { data, error } = await supabase
+          .from('transactions')
+          .select('*,accounts(name),categories(name)')
+          .eq('user_id', currentUserId)
+          .lt('date', recentFrom)
+          .order('date', { ascending: false })
+        if (error) return setNotice(`No se pudo completar el historial: ${error.message}`)
+        const older = (data || []).filter(row => row.user_id === currentUserId)
+        if (!older.length) return
+        setMovements(current => {
+          const ids = new Set(current.map(item => item.id))
+          return [...current, ...older.filter(item => !ids.has(item.id))]
+            .sort((x, y) => String(y.date || '').localeCompare(String(x.date || '')))
+        })
+      }
+      if ('requestIdleCallback' in window) window.requestIdleCallback(loadOlderHistory, { timeout: 2500 })
+      else window.setTimeout(loadOlderHistory, 300)
     } catch (e) {
       setAccounts([])
       setCategories([])
@@ -661,20 +680,23 @@ export default function App() {
         .update({ name, initial_balance: initialBalance })
         .eq('id', editingAccountId)
         .eq('user_id', session.user.id)
-        .select('id')
+        .select('*')
         .maybeSingle()
 
       if (error) return setNotice(error.message)
       if (!data?.id) return setNotice('No se encontró la cuenta para actualizar. No se creó ninguna cuenta nueva.')
+      setAccounts(current => current.map(account => account.id === editingAccountId ? data : account))
+      setMovements(current => current.map(item => item.account_id === editingAccountId ? { ...item, accounts: { name } } : item))
     } else {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('accounts')
         .insert({ name, initial_balance: initialBalance, user_id: session.user.id })
+        .select('*')
+        .single()
       if (error) return setNotice(error.message)
+      setAccounts(current => [...current, data].sort((a, b) => a.name.localeCompare(b.name)))
     }
-
     resetAccountForm()
-    await loadAll()
     setNotice(wasEditing ? 'Cuenta actualizada.' : 'Cuenta creada.')
   }
 
@@ -719,7 +741,8 @@ export default function App() {
         }
 
         editingAccountId === account.id && resetAccountForm()
-        await loadAll()
+        setAccounts(current => current.filter(item => item.id !== account.id))
+        setMovements(current => current.map(item => item.account_id === account.id ? { ...item, account_id: null, accounts: null } : item))
         setNotice('Cuenta eliminada. Los movimientos asociados se conservaron sin cuenta asignada.')
       }
     })
@@ -745,9 +768,9 @@ export default function App() {
       const localRows = rows.map((row, index) => ({ ...row, id: `${transferId}-${index}`, accounts: { name: index ? to?.name : from?.name }, categories: null }))
       setMovements(current => [...localRows, ...current])
     } else {
-      const { error } = await supabase.from('transactions').insert(rows)
+      const { data, error } = await supabase.from('transactions').insert(rows).select('*,accounts(name),categories(name)')
       if (error) return setNotice(error.message)
-      await loadAll()
+      setMovements(current => [...(data || []), ...current])
     }
     setTransferForm({ from_account_id: accounts[0]?.id || '', to_account_id: accounts[1]?.id || '', amount: '', date: new Date().toISOString().slice(0, 10), description: '' })
     setNotice('Transferencia registrada sin afectar ingresos ni egresos.')
@@ -757,33 +780,15 @@ export default function App() {
     const account = accounts.find(a => a.id === accountId)
     if (!account) return 0
 
-    // Todas las transferencias modifican únicamente los saldos de las cuentas:
-    // salen de la cuenta de origen y se suman en la cuenta de destino.
-    const transferDelta = movements
-      .filter(movement => movement.account_id === accountId && isTransferMovement(movement))
-      .reduce((sum, movement) => {
+    return movements
+      .filter(movement => movement.account_id === accountId)
+      .reduce((balance, movement) => {
         const amount = Number(movement.amount) || 0
-        if (String(movement.notes || '').includes(TRANSFER_IN)) return sum + amount
-        if (String(movement.notes || '').includes(TRANSFER_OUT)) return sum - amount
-        return sum
-      }, 0)
-
-    // La cuenta básica es la primera cuenta creada por el usuario. Al comenzar, concentra
-    // todo el patrimonio líquido: saldo disponible actual + dinero acumulado en ahorros.
-    // Luego se ajusta con las transferencias recibidas y enviadas por esa misma cuenta.
-    const basicAccount = [...accounts].sort((a, b) => {
-      const dateA = a.created_at ? new Date(a.created_at).getTime() : Number.MAX_SAFE_INTEGER
-      const dateB = b.created_at ? new Date(b.created_at).getTime() : Number.MAX_SAFE_INTEGER
-      if (dateA !== dateB) return dateA - dateB
-      return String(a.id || '').localeCompare(String(b.id || ''))
-    })[0] || accounts[0]
-
-    if (accountId === basicAccount?.id) {
-      return closingBalance + savingsBalance + transferDelta
-    }
-
-    const manualBalance = Number(account.initial_balance) || 0
-    return manualBalance + transferDelta
+        const notes = String(movement.notes || '')
+        if (notes.includes(TRANSFER_IN)) return balance + amount
+        if (notes.includes(TRANSFER_OUT)) return balance - amount
+        return movement.type === 'income' ? balance + amount : balance - amount
+      }, Number(account.initial_balance) || 0)
   }
 
   const openNew = (type) => { setEditing(null); setNewType(type); setModal(true) }
@@ -798,10 +803,19 @@ export default function App() {
       return
     }
     const payload = { type: form.type, date: form.date, description: form.description, amount: form.amount, account_id: form.account_id, category_id: form.category_id || null, notes: form.notes || null, user_id: session.user.id }
-    const q = editing ? supabase.from('transactions').update(payload).eq('id', editing.id).eq('user_id', session.user.id) : supabase.from('transactions').insert(payload)
-    const { error } = await q
+    const q = editing
+      ? supabase.from('transactions').update(payload).eq('id', editing.id).eq('user_id', session.user.id)
+      : supabase.from('transactions').insert(payload)
+    const { data, error } = await q.select('*,accounts(name),categories(name)').single()
     if (error) setNotice(error.message)
-    else { setModal(false); setEditing(null); loadAll() }
+    else {
+      setMovements(current => editing
+        ? current.map(item => item.id === editing.id ? data : item)
+        : [data, ...current]
+      )
+      setModal(false)
+      setEditing(null)
+    }
   }
 
 
@@ -1045,12 +1059,12 @@ export default function App() {
         { ...savingsPayload, user_id: session.user.id },
         ...transferRows
       ]
-      const { error } = await supabase.from('transactions').insert(rowsToInsert)
+      const { data, error } = await supabase.from('transactions').insert(rowsToInsert).select('*,accounts(name),categories(name)')
       if (error) {
         setNotice(error.message)
         return
       }
-      await loadAll()
+      setMovements(current => [...(data || []), ...current])
     }
 
     setSavingsForm({
@@ -1150,13 +1164,13 @@ export default function App() {
         const { error } = await supabase.from('transactions').delete().eq('id', id).eq('user_id', session.user.id)
         if (error) setNotice(error.message)
         else {
-          await loadAll()
+          setMovements(current => current.filter(item => item.id !== id))
           setUndoAction({ label: `Movimiento “${movement?.description || ''}” eliminado`, restore: async () => {
             if (!movement) return
             const payload = { type: movement.type, date: movement.date, description: movement.description, amount: movement.amount, account_id: movement.account_id || null, category_id: movement.category_id || null, notes: movement.notes || null, user_id: session.user.id }
-            const { error: restoreError } = await supabase.from('transactions').insert(payload)
+            const { data, error: restoreError } = await supabase.from('transactions').insert(payload).select('*,accounts(name),categories(name)').single()
             if (restoreError) setNotice(restoreError.message)
-            else { await loadAll(); setNotice('Movimiento restaurado.') }
+            else { setMovements(current => [data, ...current]); setNotice('Movimiento restaurado.') }
           }})
         }
       }
@@ -1169,8 +1183,12 @@ export default function App() {
       const next = [...categories, { ...item, id: crypto.randomUUID() }].sort((a, b) => a.name.localeCompare(b.name))
       setCategories(next); localStorage.setItem('finance_categories', JSON.stringify(next)); setNotice('Categoría agregada.'); return
     }
-    const { error } = await supabase.from('categories').insert({ ...item, user_id: session.user.id })
-    if (error) setNotice(error.message); else { setNotice('Categoría agregada.'); loadAll() }
+    const { data, error } = await supabase.from('categories').insert({ ...item, user_id: session.user.id }).select().single()
+    if (error) setNotice(error.message)
+    else {
+      setCategories(current => [...current, data].sort((a, b) => a.type.localeCompare(b.type) || a.name.localeCompare(b.name)))
+      setNotice('Categoría agregada.')
+    }
   }
 
   const removeCategory = (cat) => {
@@ -1190,7 +1208,11 @@ export default function App() {
         }
         const { error } = await supabase.from('categories').delete().eq('id', cat.id).eq('user_id', session.user.id)
         if (error) setNotice(error.message)
-        else await loadAll()
+        else {
+          setCategories(current => current.filter(item => item.id !== cat.id))
+          setMovements(current => current.map(item => item.category_id === cat.id ? { ...item, category_id: null, categories: null } : item))
+          setNotice('Categoría eliminada.')
+        }
       }
     })
   }
