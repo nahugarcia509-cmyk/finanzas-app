@@ -217,3 +217,68 @@ html[data-finance-background-mode] .view-container {
   background:transparent!important;
   background-image:none!important;
 }
+
+/* Sidebar uniforme y siempre visible */
+.side-nav{
+  position:sticky !important;
+  top:76px !important;
+  align-self:flex-start !important;
+  height:calc(100dvh - 76px) !important;
+  max-height:calc(100dvh - 76px) !important;
+  overflow-y:auto !important;
+  overflow-x:hidden !important;
+  background:rgba(7,21,36,var(--finance-sidebar-opacity)) !important;
+  background-image:none !important;
+  backdrop-filter:blur(var(--finance-surface-blur)) !important;
+  -webkit-backdrop-filter:blur(var(--finance-surface-blur)) !important;
+  scrollbar-width:thin;
+  scrollbar-color:rgba(143,176,211,.38) transparent;
+}
+.side-nav::-webkit-scrollbar{width:6px}
+.side-nav::-webkit-scrollbar-track{background:transparent}
+.side-nav::-webkit-scrollbar-thumb{background:rgba(143,176,211,.38);border-radius:999px}
+
+/* Evita la doble capa oscura dentro del menú lateral */
+.side-nav .side-menu,
+.side-nav .monthly-group,
+.side-nav .monthly-items,
+.side-nav .side-nav-top,
+html[data-finance-background-mode] .side-nav .side-menu,
+html[data-finance-background-mode] .side-nav .monthly-group,
+html[data-finance-background-mode] .side-nav .monthly-items{
+  background:transparent !important;
+  background-color:transparent !important;
+  background-image:none !important;
+  backdrop-filter:none !important;
+  -webkit-backdrop-filter:none !important;
+}
+
+/* Los estados del menú no agregan bloques de otro color */
+.side-nav .side-menu button,
+.side-nav .side-menu button:hover,
+.side-nav .side-menu button.active,
+.side-nav .monthly-toggle,
+.side-nav .monthly-toggle:hover,
+.side-nav .monthly-toggle.open{
+  background:transparent !important;
+  background-color:transparent !important;
+  background-image:none !important;
+}
+.side-nav .side-menu button:hover{color:#fff !important}
+.side-nav .side-menu button.active{
+  color:#fff !important;
+  border-color:color-mix(in srgb,var(--accent,#38bdf8) 72%,transparent) !important;
+  box-shadow:inset 3px 0 0 var(--accent,#38bdf8) !important;
+}
+
+@media (max-width:850px){
+  .side-nav{
+    position:fixed !important;
+    top:calc(76px + env(safe-area-inset-top,0px)) !important;
+    bottom:env(safe-area-inset-bottom,0px) !important;
+    height:auto !important;
+    max-height:none !important;
+    overscroll-behavior:contain;
+    -webkit-overflow-scrolling:touch;
+  }
+}
