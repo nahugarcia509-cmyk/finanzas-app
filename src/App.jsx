@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowDownCircle, ArrowUpCircle, CalendarDays, CircleDollarSign, FolderCog,
   LayoutDashboard, LogOut, Pencil, Plus, RefreshCw, Search, Settings, Settings2, Trash2,
@@ -56,19 +56,34 @@ function CategoryForm({ onAdd }) {
   </form>
 }
 
-function TransactionsTable({ rows, title, type, search, setSearch, onEdit, onDelete }) {
+function TransactionsTable({ rows, title, type, search, setSearch, onEdit, onDelete, onQuickSave, categories }) {
+  const [quickId, setQuickId] = useState(null)
+  const [draft, setDraft] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const allowed = categories.filter(c => c.type === type)
+  const begin = m => { setQuickId(m.id); setDraft({ date:m.date || '', description:m.description || '', amount:m.amount ?? '', category_id:m.category_id || '' }) }
+  const commit = async m => {
+    if (!draft?.date || !draft?.description?.trim() || Number(draft?.amount) <= 0) return
+    setSaving(true)
+    try {
+      await onQuickSave(m, { ...draft, description:draft.description.trim(), amount:Number(draft.amount), category_id:draft.category_id || null })
+      setQuickId(null); setDraft(null)
+    } catch {} finally { setSaving(false) }
+  }
   return <section className="panel table-panel">
-    <div className="panel-title table-heading">
-      <div><h3>{title}</h3><span>{rows.length} movimientos</span></div>
-      <label className="search compact"><Search /><input value={search} onChange={e => setSearch(e.target.value)} placeholder={`Buscar ${type === 'income' ? 'ingresos' : 'egresos'}...`} /></label>
-    </div>
-    <div className="table-wrap"><table><thead><tr><th>Fecha</th><th>Categoría</th><th>Concepto</th><th className="right">Monto</th><th></th></tr></thead><tbody>
-      {rows.map(m => <tr key={m.id}><td>{m.date?.split('-').reverse().join('/')}</td><td><span className={`type-pill ${type}`}>{m.categories?.name || (savingsKind(m) ? 'Ahorros' : 'Sin categoría')}</span></td><td>{m.description}{m.notes && !String(m.notes).includes('Dato histórico inicial') && !isSavingsMovement(m) ? <small>{m.notes}</small> : null}</td><td className={`right ${type === 'income' ? 'positive' : 'negative'}`}><b>{type === 'income' ? '+' : '-'}{money(m.amount)}</b></td><td><div className="row-actions"><button className="ghost" onClick={() => onEdit(m)}><Pencil /></button><button className="ghost danger" onClick={() => onDelete(m.id)}><Trash2 /></button></div></td></tr>)}
+    <div className="panel-title table-heading"><div><h3>{title}</h3><span>{rows.length} movimientos</span></div><label className="search compact"><Search /><input value={search} onChange={e => setSearch(e.target.value)} placeholder={`Buscar ${type === 'income' ? 'ingresos' : 'egresos'}...`} /></label></div>
+    <div className="table-wrap responsive-movements-table"><table><thead><tr><th>Fecha</th><th>Categoría</th><th>Concepto</th><th className="right">Monto</th><th></th></tr></thead><tbody>
+      {rows.map(m => quickId === m.id ? <tr key={m.id} className="quick-edit-row">
+        <td data-label="Fecha"><input type="date" value={draft.date} onChange={e=>setDraft(d=>({...d,date:e.target.value}))}/></td>
+        <td data-label="Categoría"><select value={draft.category_id} onChange={e=>setDraft(d=>({...d,category_id:e.target.value}))}><option value="">Sin categoría</option>{allowed.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></td>
+        <td data-label="Concepto"><input value={draft.description} onChange={e=>setDraft(d=>({...d,description:e.target.value}))}/></td>
+        <td data-label="Monto"><input className="quick-amount" type="number" min="0" step="0.01" value={draft.amount} onChange={e=>setDraft(d=>({...d,amount:e.target.value}))}/></td>
+        <td data-label="Acciones"><div className="row-actions"><button className="ghost positive" disabled={saving} onClick={()=>commit(m)} title="Guardar"><CheckCircle2/></button><button className="ghost" disabled={saving} onClick={()=>{setQuickId(null);setDraft(null)}} title="Cancelar"><X/></button></div></td>
+      </tr> : <tr key={m.id}><td data-label="Fecha">{m.date?.split('-').reverse().join('/')}</td><td data-label="Categoría"><span className={`type-pill ${type}`}>{m.categories?.name || (savingsKind(m) ? 'Ahorros' : 'Sin categoría')}</span></td><td data-label="Concepto">{m.description}{m.notes && !String(m.notes).includes('Dato histórico inicial') && !isSavingsMovement(m) ? <small>{m.notes}</small> : null}</td><td data-label="Monto" className={`right ${type === 'income' ? 'positive' : 'negative'}`}><b>{type === 'income' ? '+' : '-'}{money(m.amount)}</b></td><td data-label="Acciones"><div className="row-actions"><button className="ghost" onClick={()=>begin(m)} title="Edición rápida"><Pencil/></button><button className="ghost" onClick={()=>onEdit(m)} title="Edición completa"><Settings2/></button><button className="ghost danger" onClick={()=>onDelete(m.id)} title="Eliminar"><Trash2/></button></div></td></tr>)}
       {!rows.length && <tr><td colSpan="5" className="empty">No hay movimientos para el período seleccionado.</td></tr>}
     </tbody></table></div>
   </section>
 }
-
 
 function CategoryBreakdown({ title, rows, type }) {
   const grouped = useMemo(() => Object.values(rows.reduce((acc, row) => {
@@ -281,6 +296,11 @@ export default function App() {
   const [undoAction, setUndoAction] = useState(null)
   const [dismissedNotifications, setDismissedNotifications] = useState([])
   const [readNotifications, setReadNotifications] = useState([])
+  const loadRequestRef = useRef(0)
+  const preferencesRequestRef = useRef(0)
+  const notificationsRequestRef = useRef(0)
+  const mountedRef = useRef(true)
+  useEffect(() => () => { mountedRef.current = false }, [])
 
   useEffect(() => {
     if (!configured) {
@@ -310,6 +330,7 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    loadRequestRef.current += 1
     const [y, m] = monthKey().split('-').map(Number)
     const previousMonth = `${m === 1 ? y - 1 : y}-${String(m === 1 ? 12 : m - 1).padStart(2, '0')}`
 
@@ -362,6 +383,7 @@ export default function App() {
     if (!configured || !session?.user?.id || !preferencesLoaded) return
 
     const timer = window.setTimeout(async () => {
+      const requestId = ++preferencesRequestRef.current
       const payload = {
         user_id: session.user.id,
         theme,
@@ -374,6 +396,7 @@ export default function App() {
         updated_at: new Date().toISOString()
       }
       const { error } = await supabase.from('user_settings').upsert(payload, { onConflict: 'user_id' })
+      if (!mountedRef.current || requestId !== preferencesRequestRef.current) return
       if (error) setNotice(`No se pudieron guardar las preferencias: ${error.message}`)
     }, 350)
 
@@ -426,12 +449,14 @@ export default function App() {
   useEffect(() => {
     if (!configured || !session?.user?.id || !preferencesLoaded) return
     const timer = window.setTimeout(async () => {
+      const requestId = ++notificationsRequestRef.current
       const { error } = await supabase.from('notification_preferences').upsert({
         user_id: session.user.id,
         dismissed_ids: dismissedNotifications,
         read_ids: readNotifications,
         updated_at: new Date().toISOString()
       }, { onConflict: 'user_id' })
+      if (!mountedRef.current || requestId !== notificationsRequestRef.current) return
       if (error) setNotice(`No se pudieron guardar las notificaciones: ${error.message}`)
     }, 350)
     return () => window.clearTimeout(timer)
@@ -500,6 +525,7 @@ export default function App() {
 
   const loadAll = async () => {
     if (!session?.user?.id) return
+    const requestId = ++loadRequestRef.current
     setDataLoading(true)
     try {
       const currentUserId = session.user.id
@@ -535,6 +561,7 @@ export default function App() {
       const recentMovements = (m.data || []).filter(row => row.user_id === currentUserId)
       const loadedSettings = settingsResult.data || { opening_balance_month: '', opening_balance_amount: 0, theme: 'blue', background_theme: 'navy', sidebar_open: true, selected_income_categories: null, selected_reserve_categories: null, selected_forecast_categories: null, savings_goals: [] }
 
+      if (!mountedRef.current || requestId !== loadRequestRef.current) return
       setAccounts(ownAccounts)
       setCategories(ownCategories)
       setMovements(recentMovements)
@@ -574,6 +601,7 @@ export default function App() {
           .eq('user_id', currentUserId)
           .lt('date', recentFrom)
           .order('date', { ascending: false })
+        if (!mountedRef.current || requestId !== loadRequestRef.current) return
         if (error) return setNotice(`No se pudo completar el historial: ${error.message}`)
         const older = (data || []).filter(row => row.user_id === currentUserId)
         if (!older.length) return
@@ -595,7 +623,7 @@ export default function App() {
       setReadNotifications([])
       setNotice(e.message || String(e))
     } finally {
-      setDataLoading(false)
+      if (mountedRef.current && requestId === loadRequestRef.current) setDataLoading(false)
     }
   }
 
@@ -1184,6 +1212,26 @@ export default function App() {
       .map((goal, idx) => ({ ...goal, priority: idx + 1 }))
 
     setSavingsGoals(normalized)
+  }
+
+  const quickSaveMovement = async (movement, changes) => {
+    const category = categories.find(c => c.id === changes.category_id) || null
+    const previous = movement
+    const optimistic = { ...movement, ...changes, categories: category ? { name:category.name } : null }
+    setMovements(current => current.map(item => item.id === movement.id ? optimistic : item))
+    if (!configured) {
+      const next = movements.map(item => item.id === movement.id ? optimistic : item)
+      localStorage.setItem('finance_demo', JSON.stringify(next))
+      setNotice('Movimiento actualizado.')
+      return
+    }
+    const { error } = await supabase.from('transactions').update({ date:changes.date, description:changes.description, amount:changes.amount, category_id:changes.category_id, updated_at:new Date().toISOString() }).eq('id', movement.id).eq('user_id', session.user.id)
+    if (error) {
+      setMovements(current => current.map(item => item.id === movement.id ? previous : item))
+      setNotice(`No se pudo actualizar el movimiento: ${error.message}`)
+      throw error
+    }
+    setNotice('Movimiento actualizado.')
   }
 
   const remove = (id) => {
@@ -4256,8 +4304,8 @@ export default function App() {
         <article className="panel recent-card"><CardHelp text="Resume la actividad financiera más reciente para revisar rápidamente ingresos y egresos cargados." /><div className="panel-title"><h3>Últimos movimientos</h3><span>Actividad reciente</span></div>{movements.slice(0, 8).map(m => <div className="recent-row" key={m.id}><div><b>{m.description}</b><small>{m.categories?.name} · {m.date?.split('-').reverse().join('/')}</small></div><strong className={m.type === 'income' ? 'positive' : 'negative'}>{m.type === 'income' ? '+' : '-'}{money(m.amount)}</strong></div>)}</article>
       </section>}
 
-      {tab === 'income' && <TransactionsTable rows={incomeRows} title="Ingresos" type="income" search={search} setSearch={setSearch} onEdit={m => { setEditing(m); setNewType('income'); setModal(true) }} onDelete={remove} />}
-      {tab === 'expense' && <TransactionsTable rows={expenseRows} title="Egresos" type="expense" search={search} setSearch={setSearch} onEdit={m => { setEditing(m); setNewType('expense'); setModal(true) }} onDelete={remove} />}
+      {tab === 'income' && <TransactionsTable rows={incomeRows} title="Ingresos" type="income" search={search} setSearch={setSearch} onEdit={m => { setEditing(m); setNewType('income'); setModal(true) }} onDelete={remove} onQuickSave={quickSaveMovement} categories={categories} />}
+      {tab === 'expense' && <TransactionsTable rows={expenseRows} title="Egresos" type="expense" search={search} setSearch={setSearch} onEdit={m => { setEditing(m); setNewType('expense'); setModal(true) }} onDelete={remove} onQuickSave={quickSaveMovement} categories={categories} />}
 
       {tab === 'recurring' && <section className="panel standalone-view commitments-view">
         <div className="panel-title"><div><h2>Pagos recurrentes</h2><span>Servicios, alquileres, seguros y otros compromisos mensuales</span></div><Repeat2 /></div>
