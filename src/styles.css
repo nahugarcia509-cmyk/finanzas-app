@@ -67,3 +67,6 @@ html{font-size:clamp(14px,.25vw + 12.5px,17px)}body{min-width:320px;overflow-x:h
   .pwa-install-card { grid-template-columns: auto 1fr; }
   .pwa-install-card button { grid-column: 1 / -1; width: 100%; }
 }
+
+.header-icon.offline{color:#fb7185;border-color:rgba(251,113,133,.55);background:rgba(251,113,133,.08)}
+.header-icon:disabled{opacity:.65;cursor:wait}

@@ -297,6 +297,7 @@ export default function App() {
   const emptyFilters = { dateFrom: '', dateTo: '', category: 'all', minAmount: '', maxAmount: '' }
   const [filters, setFilters] = useState(emptyFilters)
   const [filterDraft, setFilterDraft] = useState(emptyFilters)
+  const [isOnline, setIsOnline] = useState(() => typeof navigator === 'undefined' ? true : navigator.onLine)
   const [comparisonMonth, setComparisonMonth] = useState(() => {
     const [y,m] = monthKey().split('-').map(Number)
     return `${m === 1 ? y-1 : y}-${String(m === 1 ? 12 : m-1).padStart(2,'0')}`
@@ -523,6 +524,26 @@ export default function App() {
     setReadNotifications([])
 
     if (session?.user?.id) loadAll()
+  }, [session?.user?.id])
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true)
+      if (session?.user?.id) {
+        setNotice('Conexión recuperada. Actualizando datos…')
+        loadAll()
+      }
+    }
+    const handleOffline = () => {
+      setIsOnline(false)
+      setNotice('Sin conexión. Se mantienen los últimos datos cargados.')
+    }
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
   }, [session?.user?.id])
 
   useEffect(() => {
@@ -773,16 +794,27 @@ export default function App() {
       if ('requestIdleCallback' in window) window.requestIdleCallback(loadOlderHistory, { timeout: 2500 })
       else window.setTimeout(loadOlderHistory, 300)
     } catch (e) {
-      setAccounts([])
-      setCategories([])
-      setMovements([])
-      setRecurringPayments([])
-      setCreditPlans([])
-      setDismissedNotifications([])
-      setReadNotifications([])
-      setNotice(e.message || String(e))
+      const offlineMessage = typeof navigator !== 'undefined' && !navigator.onLine
+        ? 'No hay conexión. Se mantienen los últimos datos cargados; al volver internet se actualizarán automáticamente.'
+        : `No se pudieron actualizar los datos: ${e?.message || String(e)}`
+      setNotice(offlineMessage)
     } finally {
       if (mountedRef.current && requestId === loadRequestRef.current) setDataLoading(false)
+    }
+  }
+
+
+  const refreshData = async () => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setIsOnline(false)
+      setNotice('No hay conexión a internet. Los datos se actualizarán cuando vuelva la conexión.')
+      return
+    }
+    setIsOnline(true)
+    setNotice('Actualizando datos…')
+    await loadAll()
+    if (typeof navigator === 'undefined' || navigator.onLine) {
+      setNotice('Datos actualizados correctamente.')
     }
   }
 
@@ -3664,7 +3696,7 @@ export default function App() {
       @media(max-width:1180px){.ai-summary-grid{grid-template-columns:1fr}.ai-columns{grid-template-columns:1fr}.ai-finding-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.ai-hero{align-items:flex-start}.ai-primary-button{min-width:190px}}
       @media(max-width:760px){.ai-hero{display:grid;padding:20px}.ai-primary-button{width:100%}.ai-finding-grid{grid-template-columns:1fr}.ai-main-summary,.ai-health-card,.ai-list-card,.ai-findings,.ai-question-panel,.ai-history-panel{padding:17px}.ai-summary-text{font-size:15px}.ai-question-panel form>div{align-items:flex-end;gap:10px}.ai-question-panel button{justify-content:center}.ai-privacy-note{margin-bottom:90px}}
     `}</style>
-    <header><div className="brand"><div className="brand-icon"><WalletCards /></div><div><b>Mis Finanzas</b><small>Información sincronizada y siempre disponible</small></div></div><div className="header-actions"><button className={`ghost header-icon ${filtersOpen || Object.values(filters).some(v => v && v !== 'all') ? 'active' : ''}`} onClick={() => { setFilterDraft(filters); setFiltersOpen(true) }} title="Filtros"><SlidersHorizontal />{Object.values(filters).some(v => v && v !== 'all') && <span className="filter-dot" />}</button><button className={`ghost header-icon ${notificationsOpen ? 'active' : ''}`} onClick={() => setNotificationsOpen(true)} title="Notificaciones"><Bell />{unreadNotifications.length > 0 && <span className="notification-badge">{unreadNotifications.length}</span>}</button><button className="secondary" onClick={() => openNew('income')}><ArrowUpCircle /> Ingreso</button><button onClick={() => openNew('expense')}><ArrowDownCircle /> Egreso</button>{isMobileViewport && <button className="ghost mobile-quick-return" onClick={() => setMobileQuickMode(true)} title="Vista rápida"><Home /></button>}{configured && <button className="ghost" onClick={() => supabase.auth.signOut()} title="Cerrar sesión" aria-label="Cerrar sesión"><LogOut /></button>}</div></header>
+    <header><div className="brand"><div className="brand-icon"><WalletCards /></div><div><b>Mis Finanzas</b><small>{isOnline ? 'Información sincronizada y siempre disponible' : 'Sin conexión · mostrando últimos datos cargados'}</small></div></div><div className="header-actions"><button className={`ghost header-icon ${filtersOpen || Object.values(filters).some(v => v && v !== 'all') ? 'active' : ''}`} onClick={() => { setFilterDraft(filters); setFiltersOpen(true) }} title="Filtros"><SlidersHorizontal />{Object.values(filters).some(v => v && v !== 'all') && <span className="filter-dot" />}</button><button className={`ghost header-icon ${!isOnline ? 'offline' : ''}`} type="button" onClick={refreshData} disabled={dataLoading} title={isOnline ? 'Actualizar datos' : 'Sin conexión'} aria-label="Actualizar datos"><RefreshCw className={dataLoading ? 'spin' : ''} /></button><button className={`ghost header-icon ${notificationsOpen ? 'active' : ''}`} onClick={() => setNotificationsOpen(true)} title="Notificaciones"><Bell />{unreadNotifications.length > 0 && <span className="notification-badge">{unreadNotifications.length}</span>}</button><button className="secondary" onClick={() => openNew('income')}><ArrowUpCircle /> Ingreso</button><button onClick={() => openNew('expense')}><ArrowDownCircle /> Egreso</button>{isMobileViewport && <button className="ghost mobile-quick-return" onClick={() => setMobileQuickMode(true)} title="Vista rápida"><Home /></button>}{configured && <button className="ghost" onClick={() => supabase.auth.signOut()} title="Cerrar sesión" aria-label="Cerrar sesión"><LogOut /></button>}</div></header>
     {isMobileViewport && !mobileQuickMode && <button type="button" className="mobile-quick-floating-return" onClick={() => setMobileQuickMode(true)} aria-label="Volver a vista rápida"><Home /> Vista rápida</button>}
     {filtersOpen && <div className="overlay-panel" onMouseDown={() => setFiltersOpen(false)}>
       <aside className="drawer" onMouseDown={e => e.stopPropagation()}>
