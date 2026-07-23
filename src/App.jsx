@@ -2315,14 +2315,14 @@ export default function App() {
     return <div className={`mobile-quick-app theme-${theme} background-${backgroundTheme}`}>
       <style>{`
         .mobile-quick-app, .mobile-quick-app * { box-sizing:border-box; }
-        .mobile-quick-app { min-height:100vh; padding:16px; background:#071524; color:#eef7ff; font-family:inherit; }
-        .mobile-quick-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:18px; }
+        .mobile-quick-app { min-height:100vh; min-height:100svh; padding:calc(16px + env(safe-area-inset-top, 0px)) calc(16px + env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) calc(16px + env(safe-area-inset-left, 0px)); background:#071524; color:#eef7ff; font-family:inherit; }
+        .mobile-quick-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:18px; position:relative; z-index:2; }
         .mobile-quick-brand { display:flex; align-items:center; gap:11px; min-width:0; }
         .mobile-quick-brand > div:first-child { width:42px; height:42px; border-radius:12px; display:grid; place-items:center; background:linear-gradient(135deg,#38bdf8,#6366f1); }
         .mobile-quick-brand svg { width:23px; height:23px; }
         .mobile-quick-brand b { display:block; font-size:18px; }
         .mobile-quick-brand small { display:block; color:#8aa7c7; font-size:11px; }
-        .mobile-full-button { border:1px solid #365675; background:#0d1c30; color:#dbeafe; border-radius:10px; padding:9px 11px; font-weight:700; }
+        .mobile-full-button { flex:0 0 auto; border:1px solid #365675; background:#0d1c30; color:#dbeafe; border-radius:10px; min-height:44px; padding:9px 11px; font-weight:700; touch-action:manipulation; }
         .mobile-quick-title { margin:0 0 4px; font-size:24px; }
         .mobile-quick-subtitle { margin:0 0 16px; color:#8aa7c7; }
         .mobile-quick-kpis { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px; }
@@ -2349,6 +2349,7 @@ export default function App() {
         .mobile-recent-row strong { align-self:center; white-space:nowrap; }
         .mobile-empty { color:#8aa7c7; text-align:center; padding:16px 0; }
         .mobile-quick-app .notice { margin:0 0 12px; }
+        @media (max-width:520px) { .mobile-quick-head { align-items:flex-start; flex-wrap:wrap; } .mobile-full-button { margin-left:auto; } }
         @media (max-width:390px) { .mobile-quick-kpis { grid-template-columns:1fr; } .mobile-quick-card.balance { grid-column:auto; } .mobile-quick-actions { grid-template-columns:1fr; } }
       `}</style>
       <div className="mobile-quick-head">
