@@ -3,7 +3,7 @@ import {
   ArrowDownCircle, ArrowUpCircle, CalendarDays, CircleDollarSign, FolderCog,
   LayoutDashboard, LogOut, Pencil, Plus, RefreshCw, Search, Settings, Settings2, Trash2,
   TrendingDown, TrendingUp, WalletCards, PiggyBank, ReceiptText, Download, Upload,
-  Eye, EyeOff, UserRound, Menu, ChevronDown, HelpCircle, Bell, Home, SlidersHorizontal, Keyboard, Palette, Target, CalendarRange, X, CreditCard, Repeat2, Undo2, AlertTriangle, CheckCircle2
+  Eye, EyeOff, UserRound, Menu, ChevronDown, HelpCircle, Bell, Home, SlidersHorizontal, Keyboard, Palette, Target, CalendarRange, X, CreditCard, Repeat2, Undo2, AlertTriangle, CheckCircle2, Image, RotateCcw, Type
 } from 'lucide-react'
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie,
@@ -26,6 +26,30 @@ const SAVINGS_DEPOSIT = '[SAVINGS_DEPOSIT]'
 const SAVINGS_WITHDRAWAL = '[SAVINGS_WITHDRAWAL]'
 const TRANSFER_OUT = '[TRANSFER_OUT]'
 const TRANSFER_IN = '[TRANSFER_IN]'
+
+const DEFAULT_APPEARANCE = {
+  fontFamily: 'system',
+  fontScale: 'normal',
+  backgroundMode: 'solid',
+  solidColor: '#071524',
+  gradientStart: '#071524',
+  gradientEnd: '#12355b',
+  backgroundImage: '',
+  backgroundImageOpacity: 45,
+  surfaceOpacity: 94,
+  surfaceBlur: 10,
+  borderRadius: 14,
+  shadowLevel: 'soft',
+  density: 'normal'
+}
+
+const FONT_STACKS = {
+  system: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  modern: 'Poppins, Montserrat, "Segoe UI", ui-sans-serif, sans-serif',
+  rounded: 'Nunito, "Arial Rounded MT Bold", ui-rounded, sans-serif',
+  classic: 'Georgia, "Times New Roman", serif',
+  mono: '"Cascadia Code", "SFMono-Regular", Consolas, monospace'
+}
 
 const isSavingsMovement = (movement) =>
   String(movement?.notes || '').includes(SAVINGS_DEPOSIT) ||
@@ -304,6 +328,11 @@ export default function App() {
   })
   const [theme, setTheme] = useState('blue')
   const [backgroundTheme, setBackgroundTheme] = useState('navy')
+  const [appearance, setAppearance] = useState(() => {
+    try { return { ...DEFAULT_APPEARANCE, ...JSON.parse(localStorage.getItem('finance_appearance') || '{}'), backgroundImage: localStorage.getItem('finance_background_image') || '' } }
+    catch { return DEFAULT_APPEARANCE }
+  })
+  const backgroundImageInputRef = useRef(null)
   const [selectedReserveCategories, setSelectedReserveCategories] = useState(null)
   const [selectedIncomeCategories, setSelectedIncomeCategories] = useState(null)
   const [savingsForm, setSavingsForm] = useState({
@@ -517,6 +546,7 @@ export default function App() {
     setPreferencesLoaded(false)
     setTheme('blue')
     setBackgroundTheme('navy')
+    try { setAppearance({ ...DEFAULT_APPEARANCE, ...JSON.parse(localStorage.getItem('finance_appearance') || '{}'), backgroundImage: localStorage.getItem('finance_background_image') || '' }) } catch { setAppearance(DEFAULT_APPEARANCE) }
     setSidebarOpen(true)
     setRecurringPayments([])
     setCreditPlans([])
@@ -558,6 +588,70 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.financeBackground = backgroundTheme
   }, [backgroundTheme])
+
+
+  useEffect(() => {
+    const root = document.documentElement
+    root.dataset.financeFont = appearance.fontFamily
+    root.dataset.financeFontScale = appearance.fontScale
+    root.dataset.financeDensity = appearance.density
+    root.dataset.financeShadow = appearance.shadowLevel
+    root.style.setProperty('--finance-font-family', FONT_STACKS[appearance.fontFamily] || FONT_STACKS.system)
+    root.style.setProperty('--finance-surface-opacity', String(Math.max(0, Math.min(100, Number(appearance.surfaceOpacity))) / 100))
+    root.style.setProperty('--finance-surface-blur', `${Number(appearance.surfaceBlur) || 0}px`)
+    root.style.setProperty('--finance-radius', `${Number(appearance.borderRadius) || 0}px`)
+    root.style.setProperty('--finance-bg-image-opacity', String(Math.max(0, Math.min(100, Number(appearance.backgroundImageOpacity))) / 100))
+    root.style.setProperty('--finance-solid-color', appearance.solidColor || '#071524')
+    root.style.setProperty('--finance-gradient-start', appearance.gradientStart || '#071524')
+    root.style.setProperty('--finance-gradient-end', appearance.gradientEnd || '#12355b')
+    root.style.setProperty('--finance-background-image', appearance.backgroundImage ? `url(${JSON.stringify(appearance.backgroundImage)})` : 'none')
+    root.dataset.financeBackgroundMode = appearance.backgroundMode
+    try { const { backgroundImage, ...settingsOnly } = appearance; localStorage.setItem('finance_appearance', JSON.stringify(settingsOnly)) } catch (error) { console.warn('No se pudo guardar la apariencia:', error) }
+  }, [appearance])
+
+  const updateAppearance = (key, value) => setAppearance(current => ({ ...current, [key]: value }))
+
+  const loadBackgroundImage = (event) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    if (!file.type.startsWith('image/')) { setNotice('Seleccionar un archivo de imagen válido.'); return }
+    const reader = new FileReader()
+    reader.onload = () => {
+      const image = new window.Image()
+      image.onload = () => {
+        const max = 1800
+        const scale = Math.min(1, max / Math.max(image.width, image.height))
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.max(1, Math.round(image.width * scale))
+        canvas.height = Math.max(1, Math.round(image.height * scale))
+        const context = canvas.getContext('2d')
+        context.drawImage(image, 0, 0, canvas.width, canvas.height)
+        const compressed = canvas.toDataURL('image/jpeg', .82)
+        try {
+          localStorage.setItem('finance_background_image', compressed)
+          setAppearance(current => ({ ...current, backgroundMode: 'image', backgroundImage: compressed }))
+          setNotice('Imagen de fondo aplicada.')
+        } catch { setNotice('La imagen es demasiado pesada. Seleccionar una imagen más pequeña.') }
+      }
+      image.src = String(reader.result)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const removeBackgroundImage = () => {
+    localStorage.removeItem('finance_background_image')
+    setAppearance(current => ({ ...current, backgroundImage: '', backgroundMode: 'solid' }))
+  }
+
+  const resetAppearance = () => {
+    localStorage.removeItem('finance_appearance')
+    localStorage.removeItem('finance_background_image')
+    setTheme('blue')
+    setBackgroundTheme('navy')
+    setAppearance(DEFAULT_APPEARANCE)
+    setNotice('Apariencia restablecida.')
+  }
 
   useEffect(() => {
     if (!configured || !session?.user?.id || !preferencesLoaded) return
@@ -4754,6 +4848,28 @@ export default function App() {
             <h4>Color de fondo</h4>
             <p>Permite elegir el tono general de fondo sin modificar la legibilidad de cards y tablas.</p>
             <div className="background-picker">{[['navy','Azul oscuro'],['slate','Pizarra'],['black','Negro'],['blue','Azul profundo'],['plum','Ciruela']].map(([value,label])=><button type="button" key={value} className={`background-option background-${value}-btn ${backgroundTheme===value?'active':''}`} onClick={()=>setBackgroundTheme(value)} aria-label={`Usar fondo ${label}`}><span>{label}</span></button>)}</div>
+          </div>
+          <div className="theme-block appearance-customizer">
+            <div className="appearance-heading"><div><h4>Personalización visual</h4><p>Estos ajustes modifican únicamente la estética de la aplicación.</p></div><button type="button" className="ghost" onClick={resetAppearance}><RotateCcw /> Restablecer</button></div>
+            <div className="appearance-grid">
+              <label><span><Type /> Tipografía</span><select value={appearance.fontFamily} onChange={e=>updateAppearance('fontFamily',e.target.value)}><option value="system">Sistema / Inter</option><option value="modern">Moderna</option><option value="rounded">Redondeada</option><option value="classic">Clásica</option><option value="mono">Monoespaciada</option></select></label>
+              <label><span>Tamaño de texto</span><select value={appearance.fontScale} onChange={e=>updateAppearance('fontScale',e.target.value)}><option value="compact">Pequeño</option><option value="normal">Normal</option><option value="large">Grande</option></select></label>
+              <label><span>Densidad</span><select value={appearance.density} onChange={e=>updateAppearance('density',e.target.value)}><option value="compact">Compacta</option><option value="normal">Normal</option><option value="comfortable">Amplia</option></select></label>
+              <label><span>Sombras</span><select value={appearance.shadowLevel} onChange={e=>updateAppearance('shadowLevel',e.target.value)}><option value="none">Sin sombras</option><option value="soft">Suaves</option><option value="strong">Marcadas</option></select></label>
+              <label><span>Tipo de fondo</span><select value={appearance.backgroundMode} onChange={e=>updateAppearance('backgroundMode',e.target.value)}><option value="solid">Color sólido</option><option value="gradient">Degradado</option><option value="image" disabled={!appearance.backgroundImage}>Imagen</option></select></label>
+              <label><span>Redondeo: {appearance.borderRadius}px</span><input type="range" min="0" max="28" step="1" value={appearance.borderRadius} onChange={e=>updateAppearance('borderRadius',Number(e.target.value))}/></label>
+              {appearance.backgroundMode==='solid' && <label><span>Color del fondo</span><input className="appearance-color" type="color" value={appearance.solidColor} onChange={e=>updateAppearance('solidColor',e.target.value)}/></label>}
+              {appearance.backgroundMode==='gradient' && <><label><span>Inicio del degradado</span><input className="appearance-color" type="color" value={appearance.gradientStart} onChange={e=>updateAppearance('gradientStart',e.target.value)}/></label><label><span>Final del degradado</span><input className="appearance-color" type="color" value={appearance.gradientEnd} onChange={e=>updateAppearance('gradientEnd',e.target.value)}/></label></>}
+              <label><span>Transparencia de paneles: {100-appearance.surfaceOpacity}%</span><input type="range" min="55" max="100" step="1" value={appearance.surfaceOpacity} onChange={e=>updateAppearance('surfaceOpacity',Number(e.target.value))}/></label>
+              <label><span>Desenfoque: {appearance.surfaceBlur}px</span><input type="range" min="0" max="30" step="1" value={appearance.surfaceBlur} onChange={e=>updateAppearance('surfaceBlur',Number(e.target.value))}/></label>
+              <div className="appearance-image-control">
+                <span><Image /> Imagen de fondo</span>
+                <input ref={backgroundImageInputRef} hidden type="file" accept="image/*" onChange={loadBackgroundImage}/>
+                <div className="appearance-image-actions"><button type="button" className="secondary" onClick={()=>backgroundImageInputRef.current?.click()}><Upload /> Elegir imagen</button>{appearance.backgroundImage&&<button type="button" className="ghost danger" onClick={removeBackgroundImage}><Trash2 /> Quitar</button>}</div>
+              </div>
+              {appearance.backgroundImage && <label><span>Visibilidad de imagen: {appearance.backgroundImageOpacity}%</span><input type="range" min="10" max="100" step="1" value={appearance.backgroundImageOpacity} onChange={e=>updateAppearance('backgroundImageOpacity',Number(e.target.value))}/></label>}
+            </div>
+            <div className="appearance-preview"><div className="appearance-preview-card"><b>Vista previa</b><span>Tarjetas, tablas y paneles conservarán la misma funcionalidad.</span><button type="button">Botón principal</button></div></div>
           </div>
           <div className="theme-block">
             <h4>Atajos de teclado</h4>
