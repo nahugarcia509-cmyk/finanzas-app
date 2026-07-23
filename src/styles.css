@@ -136,3 +136,84 @@ th{background-color:rgba(12,23,39,var(--finance-table-opacity))!important}
 .settings-appearance-title{margin-bottom:14px}
 .settings-appearance-title>svg{width:28px;height:28px;color:var(--accent,#38bdf8)}
 .account-settings{max-width:1180px!important}
+
+/* Corrección definitiva de transparencias: reemplaza fondos sólidos y gradientes previos */
+html[data-finance-background-mode] .panel,
+html[data-finance-background-mode] .kpis article,
+html[data-finance-background-mode] .kpi-info-card,
+html[data-finance-background-mode] .control-subpanel,
+html[data-finance-background-mode] .theme-block,
+html[data-finance-background-mode] .account-summary,
+html[data-finance-background-mode] .pwa-install-card,
+html[data-finance-background-mode] .entry-card,
+html[data-finance-background-mode] .category-detail-card,
+html[data-finance-background-mode] .category-panel-card,
+html[data-finance-background-mode] .commitment-card,
+html[data-finance-background-mode] .credit-card-item,
+html[data-finance-background-mode] .forecast-category-dialog,
+html[data-finance-background-mode] .confirm-dialog,
+html[data-finance-background-mode] .global-error-card,
+html[data-finance-background-mode] .visual-card,
+html[data-finance-background-mode] .insight-list,
+html[data-finance-background-mode] .savings-movement-card,
+html[data-finance-background-mode] .home-dashboard-grid > .panel,
+html[data-finance-background-mode] .home-summary-cards .kpi-info-card,
+html[data-finance-background-mode] .control-card,
+html[data-finance-background-mode] .recent-card,
+html[data-finance-background-mode] .entry-card,
+html[data-finance-background-mode] article.card,
+html[data-finance-background-mode] section.card {
+  background:rgba(13,28,48,var(--finance-panel-opacity))!important;
+  background-image:none!important;
+  backdrop-filter:blur(var(--finance-surface-blur))!important;
+  -webkit-backdrop-filter:blur(var(--finance-surface-blur))!important;
+}
+
+html[data-finance-background-mode] .table-panel,
+html[data-finance-background-mode] .table-wrap,
+html[data-finance-background-mode] .account-transfer-table-wrap,
+html[data-finance-background-mode] .category-table,
+html[data-finance-background-mode] .data-table,
+html[data-finance-background-mode] .responsive-movements-table {
+  background:rgba(9,23,40,var(--finance-table-opacity))!important;
+  background-image:none!important;
+  backdrop-filter:blur(var(--finance-surface-blur))!important;
+  -webkit-backdrop-filter:blur(var(--finance-surface-blur))!important;
+}
+html[data-finance-background-mode] table,
+html[data-finance-background-mode] tbody,
+html[data-finance-background-mode] td {
+  background:transparent!important;
+  background-image:none!important;
+}
+html[data-finance-background-mode] th {
+  background:rgba(12,23,39,var(--finance-table-opacity))!important;
+  background-image:none!important;
+}
+html[data-finance-background-mode] .responsive-movements-table tr,
+html[data-finance-background-mode] tbody tr {
+  background:rgba(12,26,45,var(--finance-table-opacity))!important;
+  background-image:none!important;
+}
+
+html[data-finance-background-mode] .sidebar,
+html[data-finance-background-mode] .sidebar.open,
+html[data-finance-background-mode] .mobile-sidebar,
+html[data-finance-background-mode] .side-menu,
+html[data-finance-background-mode] aside {
+  background:rgba(7,21,36,var(--finance-sidebar-opacity))!important;
+  background-image:none!important;
+  backdrop-filter:blur(var(--finance-surface-blur))!important;
+  -webkit-backdrop-filter:blur(var(--finance-surface-blur))!important;
+}
+
+/* Los contenedores estructurales nunca deben tapar la imagen de fondo */
+html[data-finance-background-mode] .content,
+html[data-finance-background-mode] .main-content,
+html[data-finance-background-mode] .page-content,
+html[data-finance-background-mode] .dashboard,
+html[data-finance-background-mode] .dashboard-page,
+html[data-finance-background-mode] .view-container {
+  background:transparent!important;
+  background-image:none!important;
+}
