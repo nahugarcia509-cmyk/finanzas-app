@@ -185,37 +185,84 @@ function GeneralBalanceTable({ openingBalance, incomeByCategory, expenseByCatego
   </section>
 }
 
+// Soporte de ayuda táctil (tap) además del hover de escritorio.
+// Se controla por JS con prioridad "important" a nivel de elemento en vez de
+// depender de clases CSS, porque el archivo tiene muchos bloques <style>
+// inline con !important cuyo orden de aparición en el DOM cambia según la
+// pestaña activa. Una regla CSS nueva podría terminar antes o después de esas
+// reglas y quedar sin efecto. Fijar la propiedad directo en el elemento con
+// prioridad "important" gana siempre, sin importar ese orden, y no toca nada
+// del CSS existente (el hover de escritorio sigue funcionando igual).
+function useTapHelp() {
+  const [open, setOpen] = useState(false)
+  const buttonRef = useRef(null)
+  const tooltipRef = useRef(null)
+
+  useEffect(() => {
+    const el = tooltipRef.current
+    if (!el) return
+    if (open) {
+      el.style.setProperty('opacity', '1', 'important')
+      el.style.setProperty('visibility', 'visible', 'important')
+    } else {
+      el.style.removeProperty('opacity')
+      el.style.removeProperty('visibility')
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const closeIfOutside = (e) => { if (buttonRef.current && !buttonRef.current.contains(e.target)) setOpen(false) }
+    const closeOnEscape = (e) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', closeIfOutside)
+    document.addEventListener('touchstart', closeIfOutside)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('mousedown', closeIfOutside)
+      document.removeEventListener('touchstart', closeIfOutside)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [open])
+
+  const toggle = (e) => { e.stopPropagation(); setOpen(o => !o) }
+  return { open, toggle, buttonRef, tooltipRef }
+}
+
 function ChartInfoTitle({ title, text }) {
+  const { open, toggle, buttonRef, tooltipRef } = useTapHelp()
   return <div className="chart-title-row">
     <h3>{title}</h3>
-    <button type="button" className="chart-help" aria-label={`Explicación de ${title}`}>
+    <button ref={buttonRef} type="button" className="chart-help" aria-label={`Explicación de ${title}`} aria-expanded={open} onClick={toggle}>
       <HelpCircle />
-      <span className="chart-help-tooltip">{text}</span>
+      <span ref={tooltipRef} className="chart-help-tooltip">{text}</span>
     </button>
   </div>
 }
 
 function CardHelp({ text, label = 'Ver explicación' }) {
-  return <button type="button" className="card-help" aria-label={label}>
+  const { open, toggle, buttonRef, tooltipRef } = useTapHelp()
+  return <button ref={buttonRef} type="button" className="card-help" aria-label={label} aria-expanded={open} onClick={toggle}>
     <HelpCircle />
-    <span className="card-help-tooltip">{text}</span>
+    <span ref={tooltipRef} className="card-help-tooltip">{text}</span>
   </button>
 }
 
 function InlineHelp({ text, label = 'Ver explicación' }) {
-  return <button type="button" className="inline-help" aria-label={label}>
+  const { open, toggle, buttonRef, tooltipRef } = useTapHelp()
+  return <button ref={buttonRef} type="button" className="inline-help" aria-label={label} aria-expanded={open} onClick={toggle}>
     <HelpCircle />
-    <span className="inline-help-tooltip">{text}</span>
+    <span ref={tooltipRef} className="inline-help-tooltip">{text}</span>
   </button>
 }
 
 function KpiInfoCard({ title, value, detail, icon, tone = '', help }) {
+  const { open, toggle, buttonRef, tooltipRef } = useTapHelp()
   return <article className={`kpi-info-card ${tone}`}>
     <div className="kpi-info-head">
       <span>{title}</span>
-      <button type="button" className="kpi-help" aria-label={`Explicación de ${title}`}>
+      <button ref={buttonRef} type="button" className="kpi-help" aria-label={`Explicación de ${title}`} aria-expanded={open} onClick={toggle}>
         <HelpCircle />
-        <span className="kpi-help-tooltip">{help}</span>
+        <span ref={tooltipRef} className="kpi-help-tooltip">{help}</span>
       </button>
     </div>
     <strong className={tone}>{value}</strong>
