@@ -343,11 +343,64 @@ export default function App() {
   const [undoAction, setUndoAction] = useState(null)
   const [dismissedNotifications, setDismissedNotifications] = useState([])
   const [readNotifications, setReadNotifications] = useState([])
+  const [installPrompt, setInstallPrompt] = useState(null)
+  const [isStandaloneApp, setIsStandaloneApp] = useState(() =>
+    typeof window !== 'undefined' && (
+      window.matchMedia?.('(display-mode: standalone)').matches ||
+      window.navigator.standalone === true
+    )
+  )
+  const [isIosDevice] = useState(() =>
+    typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent)
+  )
   const loadRequestRef = useRef(0)
   const preferencesRequestRef = useRef(0)
   const notificationsRequestRef = useRef(0)
   const mountedRef = useRef(true)
   useEffect(() => () => { mountedRef.current = false }, [])
+
+  useEffect(() => {
+    const onBeforeInstall = event => {
+      event.preventDefault()
+      setInstallPrompt(event)
+    }
+    const onInstalled = () => {
+      setInstallPrompt(null)
+      setIsStandaloneApp(true)
+      setNotice('La aplicación se instaló correctamente.')
+    }
+    const displayMode = window.matchMedia?.('(display-mode: standalone)')
+    const syncDisplayMode = event => setIsStandaloneApp(event.matches || window.navigator.standalone === true)
+
+    window.addEventListener('beforeinstallprompt', onBeforeInstall)
+    window.addEventListener('appinstalled', onInstalled)
+    displayMode?.addEventListener?.('change', syncDisplayMode)
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onBeforeInstall)
+      window.removeEventListener('appinstalled', onInstalled)
+      displayMode?.removeEventListener?.('change', syncDisplayMode)
+    }
+  }, [])
+
+  const installApplication = async () => {
+    if (isStandaloneApp) {
+      setNotice('La aplicación ya está instalada en este dispositivo.')
+      return
+    }
+    if (installPrompt) {
+      await installPrompt.prompt()
+      const choice = await installPrompt.userChoice
+      setInstallPrompt(null)
+      if (choice.outcome !== 'accepted') setNotice('La instalación fue cancelada.')
+      return
+    }
+    if (isIosDevice) {
+      setNotice('En iPhone o iPad: abrir Compartir en Safari y seleccionar “Agregar a pantalla de inicio”.')
+      return
+    }
+    setNotice('Abrir el menú del navegador y seleccionar “Instalar aplicación” o “Agregar a pantalla de inicio”.')
+  }
 
   useEffect(() => {
     if (!configured) {
@@ -4528,6 +4581,20 @@ export default function App() {
         <div className="account-summary">
           <UserRound />
           <div><b>{profileName || 'Usuario'}</b><small>{session?.user?.email || 'Sin correo disponible'}</small></div>
+        </div>
+        <div className="pwa-install-card">
+          <Download />
+          <div>
+            <b>{isStandaloneApp ? 'Aplicación instalada' : 'Instalar en este dispositivo'}</b>
+            <small>{isStandaloneApp
+              ? 'Se abre como una app independiente y recibe las nuevas versiones publicadas.'
+              : isIosDevice
+                ? 'En Safari se agrega desde Compartir → Agregar a pantalla de inicio.'
+                : 'Agrega un icono y abre Mis Finanzas sin la barra del navegador.'}</small>
+          </div>
+          <button type="button" onClick={installApplication} disabled={isStandaloneApp}>
+            <Download /> {isStandaloneApp ? 'Instalada' : 'Instalar aplicación'}
+          </button>
         </div>
         <form onSubmit={saveAccountSettings}>
           <div className="account-settings-grid">
