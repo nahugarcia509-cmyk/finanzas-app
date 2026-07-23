@@ -344,6 +344,7 @@ export default function App() {
   const [dismissedNotifications, setDismissedNotifications] = useState([])
   const [readNotifications, setReadNotifications] = useState([])
   const [installPrompt, setInstallPrompt] = useState(null)
+  const [checkingAppUpdate, setCheckingAppUpdate] = useState(false)
   const [isStandaloneApp, setIsStandaloneApp] = useState(() =>
     typeof window !== 'undefined' && (
       window.matchMedia?.('(display-mode: standalone)').matches ||
@@ -400,6 +401,64 @@ export default function App() {
       return
     }
     setNotice('Abrir el menú del navegador y seleccionar “Instalar aplicación” o “Agregar a pantalla de inicio”.')
+  }
+
+
+  const updateApplication = async () => {
+    if (!('serviceWorker' in navigator)) {
+      window.location.reload()
+      return
+    }
+
+    setCheckingAppUpdate(true)
+    setNotice('Buscando una nueva versión de la aplicación…')
+
+    try {
+      const registration = await navigator.serviceWorker.getRegistration('/sw.js')
+        || await navigator.serviceWorker.getRegistration()
+
+      if (!registration) {
+        setNotice('Actualizando la aplicación…')
+        window.location.reload()
+        return
+      }
+
+      const activateWaitingWorker = () => {
+        if (!registration.waiting) return false
+        registration.waiting.postMessage({ type: 'SKIP_WAITING' })
+        return true
+      }
+
+      if (activateWaitingWorker()) return
+
+      await registration.update()
+
+      if (activateWaitingWorker()) return
+
+      const installing = registration.installing
+      if (installing) {
+        await new Promise(resolve => {
+          const timeout = window.setTimeout(resolve, 8000)
+          const onStateChange = () => {
+            if (installing.state === 'installed' || installing.state === 'activated' || installing.state === 'redundant') {
+              window.clearTimeout(timeout)
+              installing.removeEventListener('statechange', onStateChange)
+              resolve()
+            }
+          }
+          installing.addEventListener('statechange', onStateChange)
+        })
+      }
+
+      if (activateWaitingWorker()) return
+
+      setNotice('La aplicación ya está actualizada. Se recargará para comprobar los archivos.')
+      window.setTimeout(() => window.location.reload(), 700)
+    } catch (error) {
+      console.error('No se pudo comprobar la actualización:', error)
+      setNotice('No se pudo comprobar la actualización. Revisar la conexión e intentar nuevamente.')
+      setCheckingAppUpdate(false)
+    }
   }
 
   useEffect(() => {
@@ -4594,6 +4653,16 @@ export default function App() {
           </div>
           <button type="button" onClick={installApplication} disabled={isStandaloneApp}>
             <Download /> {isStandaloneApp ? 'Instalada' : 'Instalar aplicación'}
+          </button>
+        </div>
+        <div className="pwa-install-card">
+          <RefreshCw className={checkingAppUpdate ? 'spin' : ''} />
+          <div>
+            <b>Actualizar aplicación</b>
+            <small>Busca la última versión publicada y la aplica sin borrar los datos ni cerrar la sesión.</small>
+          </div>
+          <button type="button" onClick={updateApplication} disabled={checkingAppUpdate}>
+            <RefreshCw className={checkingAppUpdate ? 'spin' : ''} /> {checkingAppUpdate ? 'Comprobando…' : 'Actualizar app'}
           </button>
         </div>
         <form onSubmit={saveAccountSettings}>
