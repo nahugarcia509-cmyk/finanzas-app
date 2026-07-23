@@ -36,7 +36,9 @@ const DEFAULT_APPEARANCE = {
   gradientEnd: '#12355b',
   backgroundImage: '',
   backgroundImageOpacity: 45,
-  surfaceOpacity: 94,
+  panelOpacity: 94,
+  tableOpacity: 94,
+  sidebarOpacity: 96,
   surfaceBlur: 10,
   borderRadius: 14,
   shadowLevel: 'soft',
@@ -597,7 +599,10 @@ export default function App() {
     root.dataset.financeDensity = appearance.density
     root.dataset.financeShadow = appearance.shadowLevel
     root.style.setProperty('--finance-font-family', FONT_STACKS[appearance.fontFamily] || FONT_STACKS.system)
-    root.style.setProperty('--finance-surface-opacity', String(Math.max(0, Math.min(100, Number(appearance.surfaceOpacity))) / 100))
+    const migratedPanelOpacity = Number(appearance.panelOpacity ?? appearance.surfaceOpacity ?? 94)
+    root.style.setProperty('--finance-panel-opacity', String(Math.max(0, Math.min(100, migratedPanelOpacity)) / 100))
+    root.style.setProperty('--finance-table-opacity', String(Math.max(0, Math.min(100, Number(appearance.tableOpacity ?? migratedPanelOpacity))) / 100))
+    root.style.setProperty('--finance-sidebar-opacity', String(Math.max(0, Math.min(100, Number(appearance.sidebarOpacity ?? 96))) / 100))
     root.style.setProperty('--finance-surface-blur', `${Number(appearance.surfaceBlur) || 0}px`)
     root.style.setProperty('--finance-radius', `${Number(appearance.borderRadius) || 0}px`)
     root.style.setProperty('--finance-bg-image-opacity', String(Math.max(0, Math.min(100, Number(appearance.backgroundImageOpacity))) / 100))
@@ -4792,6 +4797,49 @@ export default function App() {
             <RefreshCw className={checkingAppUpdate ? 'spin' : ''} /> {checkingAppUpdate ? 'Comprobando…' : 'Actualizar app'}
           </button>
         </div>
+        <div className="settings-appearance-section">
+          <div className="panel-title settings-appearance-title">
+            <div><h3>Apariencia</h3><span>Personalizar colores, fondos, tipografía y transparencias sin modificar la funcionalidad.</span></div>
+            <Palette />
+          </div>
+          <div className="theme-section">
+          <div className="theme-block">
+            <h4>Color principal</h4>
+            <p>Define el color de botones, bordes activos e indicadores.</p>
+            <div className="theme-picker">{['blue','green','purple','orange','gray'].map(x=><button type="button" key={x} className={`theme-option theme-${x}-btn ${theme===x?'active':''}`} onClick={()=>setTheme(x)} aria-label={`Usar color ${x}`} />)}</div>
+          </div>
+          <div className="theme-block">
+            <h4>Color de fondo</h4>
+            <p>Permite elegir el tono general de fondo sin modificar la legibilidad de cards y tablas.</p>
+            <div className="background-picker">{[['navy','Azul oscuro'],['slate','Pizarra'],['black','Negro'],['blue','Azul profundo'],['plum','Ciruela']].map(([value,label])=><button type="button" key={value} className={`background-option background-${value}-btn ${backgroundTheme===value?'active':''}`} onClick={()=>setBackgroundTheme(value)} aria-label={`Usar fondo ${label}`}><span>{label}</span></button>)}</div>
+          </div>
+          <div className="theme-block appearance-customizer">
+            <div className="appearance-heading"><div><h4>Personalización visual</h4><p>Estos ajustes modifican únicamente la estética de la aplicación.</p></div><button type="button" className="ghost" onClick={resetAppearance}><RotateCcw /> Restablecer</button></div>
+            <div className="appearance-grid">
+              <label><span><Type /> Tipografía</span><select value={appearance.fontFamily} onChange={e=>updateAppearance('fontFamily',e.target.value)}><option value="system">Sistema / Inter</option><option value="modern">Moderna</option><option value="rounded">Redondeada</option><option value="classic">Clásica</option><option value="mono">Monoespaciada</option></select></label>
+              <label><span>Tamaño de texto</span><select value={appearance.fontScale} onChange={e=>updateAppearance('fontScale',e.target.value)}><option value="compact">Pequeño</option><option value="normal">Normal</option><option value="large">Grande</option></select></label>
+              <label><span>Densidad</span><select value={appearance.density} onChange={e=>updateAppearance('density',e.target.value)}><option value="compact">Compacta</option><option value="normal">Normal</option><option value="comfortable">Amplia</option></select></label>
+              <label><span>Sombras</span><select value={appearance.shadowLevel} onChange={e=>updateAppearance('shadowLevel',e.target.value)}><option value="none">Sin sombras</option><option value="soft">Suaves</option><option value="strong">Marcadas</option></select></label>
+              <label><span>Tipo de fondo</span><select value={appearance.backgroundMode} onChange={e=>updateAppearance('backgroundMode',e.target.value)}><option value="solid">Color sólido</option><option value="gradient">Degradado</option><option value="image" disabled={!appearance.backgroundImage}>Imagen</option></select></label>
+              <label><span>Redondeo: {appearance.borderRadius}px</span><input type="range" min="0" max="28" step="1" value={appearance.borderRadius} onChange={e=>updateAppearance('borderRadius',Number(e.target.value))}/></label>
+              {appearance.backgroundMode==='solid' && <label><span>Color del fondo</span><input className="appearance-color" type="color" value={appearance.solidColor} onChange={e=>updateAppearance('solidColor',e.target.value)}/></label>}
+              {appearance.backgroundMode==='gradient' && <><label><span>Inicio del degradado</span><input className="appearance-color" type="color" value={appearance.gradientStart} onChange={e=>updateAppearance('gradientStart',e.target.value)}/></label><label><span>Final del degradado</span><input className="appearance-color" type="color" value={appearance.gradientEnd} onChange={e=>updateAppearance('gradientEnd',e.target.value)}/></label></>}
+              <label><span>Transparencia de paneles y tarjetas: {100-(appearance.panelOpacity ?? appearance.surfaceOpacity ?? 94)}%</span><input type="range" min="20" max="100" step="1" value={appearance.panelOpacity ?? appearance.surfaceOpacity ?? 94} onChange={e=>updateAppearance('panelOpacity',Number(e.target.value))}/></label>
+              <label><span>Transparencia de tablas: {100-(appearance.tableOpacity ?? appearance.panelOpacity ?? 94)}%</span><input type="range" min="20" max="100" step="1" value={appearance.tableOpacity ?? appearance.panelOpacity ?? 94} onChange={e=>updateAppearance('tableOpacity',Number(e.target.value))}/></label>
+              <label><span>Transparencia del menú lateral: {100-(appearance.sidebarOpacity ?? 96)}%</span><input type="range" min="20" max="100" step="1" value={appearance.sidebarOpacity ?? 96} onChange={e=>updateAppearance('sidebarOpacity',Number(e.target.value))}/></label>
+              <label><span>Desenfoque: {appearance.surfaceBlur}px</span><input type="range" min="0" max="30" step="1" value={appearance.surfaceBlur} onChange={e=>updateAppearance('surfaceBlur',Number(e.target.value))}/></label>
+              <div className="appearance-image-control">
+                <span><Image /> Imagen de fondo</span>
+                <input ref={backgroundImageInputRef} hidden type="file" accept="image/*" onChange={loadBackgroundImage}/>
+                <div className="appearance-image-actions"><button type="button" className="secondary" onClick={()=>backgroundImageInputRef.current?.click()}><Upload /> Elegir imagen</button>{appearance.backgroundImage&&<button type="button" className="ghost danger" onClick={removeBackgroundImage}><Trash2 /> Quitar</button>}</div>
+              </div>
+              {appearance.backgroundImage && <label><span>Visibilidad de imagen: {appearance.backgroundImageOpacity}%</span><input type="range" min="10" max="100" step="1" value={appearance.backgroundImageOpacity} onChange={e=>updateAppearance('backgroundImageOpacity',Number(e.target.value))}/></label>}
+            </div>
+            <div className="appearance-preview"><div className="appearance-preview-card"><b>Vista previa</b><span>Tarjetas, tablas y paneles conservarán la misma funcionalidad.</span><button type="button">Botón principal</button></div></div>
+          </div>
+          </div>
+        </div>
+
         <form onSubmit={saveAccountSettings}>
           <div className="account-settings-grid">
             <label className="full-row">Nombre
@@ -4819,8 +4867,8 @@ export default function App() {
 
       {tab === 'control' && <section className="panel control-card">
         <div className="section-icon"><FolderCog /></div>
-        <h2>Control y personalización</h2>
-        <p>Administrar configuración financiera, categorías y apariencia.</p>
+        <h2>Control financiero</h2>
+        <p>Administrar la configuración financiera, las categorías y los atajos.</p>
 
         <div className="control-sections-grid">
           <form className="control-subpanel" onSubmit={saveFinancialSettings}>
@@ -4840,42 +4888,11 @@ export default function App() {
 
         <div className="theme-section">
           <div className="theme-block">
-            <h4>Color principal</h4>
-            <p>Define el color de botones, bordes activos e indicadores.</p>
-            <div className="theme-picker">{['blue','green','purple','orange','gray'].map(x=><button type="button" key={x} className={`theme-option theme-${x}-btn ${theme===x?'active':''}`} onClick={()=>setTheme(x)} aria-label={`Usar color ${x}`} />)}</div>
-          </div>
-          <div className="theme-block">
-            <h4>Color de fondo</h4>
-            <p>Permite elegir el tono general de fondo sin modificar la legibilidad de cards y tablas.</p>
-            <div className="background-picker">{[['navy','Azul oscuro'],['slate','Pizarra'],['black','Negro'],['blue','Azul profundo'],['plum','Ciruela']].map(([value,label])=><button type="button" key={value} className={`background-option background-${value}-btn ${backgroundTheme===value?'active':''}`} onClick={()=>setBackgroundTheme(value)} aria-label={`Usar fondo ${label}`}><span>{label}</span></button>)}</div>
-          </div>
-          <div className="theme-block appearance-customizer">
-            <div className="appearance-heading"><div><h4>Personalización visual</h4><p>Estos ajustes modifican únicamente la estética de la aplicación.</p></div><button type="button" className="ghost" onClick={resetAppearance}><RotateCcw /> Restablecer</button></div>
-            <div className="appearance-grid">
-              <label><span><Type /> Tipografía</span><select value={appearance.fontFamily} onChange={e=>updateAppearance('fontFamily',e.target.value)}><option value="system">Sistema / Inter</option><option value="modern">Moderna</option><option value="rounded">Redondeada</option><option value="classic">Clásica</option><option value="mono">Monoespaciada</option></select></label>
-              <label><span>Tamaño de texto</span><select value={appearance.fontScale} onChange={e=>updateAppearance('fontScale',e.target.value)}><option value="compact">Pequeño</option><option value="normal">Normal</option><option value="large">Grande</option></select></label>
-              <label><span>Densidad</span><select value={appearance.density} onChange={e=>updateAppearance('density',e.target.value)}><option value="compact">Compacta</option><option value="normal">Normal</option><option value="comfortable">Amplia</option></select></label>
-              <label><span>Sombras</span><select value={appearance.shadowLevel} onChange={e=>updateAppearance('shadowLevel',e.target.value)}><option value="none">Sin sombras</option><option value="soft">Suaves</option><option value="strong">Marcadas</option></select></label>
-              <label><span>Tipo de fondo</span><select value={appearance.backgroundMode} onChange={e=>updateAppearance('backgroundMode',e.target.value)}><option value="solid">Color sólido</option><option value="gradient">Degradado</option><option value="image" disabled={!appearance.backgroundImage}>Imagen</option></select></label>
-              <label><span>Redondeo: {appearance.borderRadius}px</span><input type="range" min="0" max="28" step="1" value={appearance.borderRadius} onChange={e=>updateAppearance('borderRadius',Number(e.target.value))}/></label>
-              {appearance.backgroundMode==='solid' && <label><span>Color del fondo</span><input className="appearance-color" type="color" value={appearance.solidColor} onChange={e=>updateAppearance('solidColor',e.target.value)}/></label>}
-              {appearance.backgroundMode==='gradient' && <><label><span>Inicio del degradado</span><input className="appearance-color" type="color" value={appearance.gradientStart} onChange={e=>updateAppearance('gradientStart',e.target.value)}/></label><label><span>Final del degradado</span><input className="appearance-color" type="color" value={appearance.gradientEnd} onChange={e=>updateAppearance('gradientEnd',e.target.value)}/></label></>}
-              <label><span>Transparencia de paneles: {100-appearance.surfaceOpacity}%</span><input type="range" min="55" max="100" step="1" value={appearance.surfaceOpacity} onChange={e=>updateAppearance('surfaceOpacity',Number(e.target.value))}/></label>
-              <label><span>Desenfoque: {appearance.surfaceBlur}px</span><input type="range" min="0" max="30" step="1" value={appearance.surfaceBlur} onChange={e=>updateAppearance('surfaceBlur',Number(e.target.value))}/></label>
-              <div className="appearance-image-control">
-                <span><Image /> Imagen de fondo</span>
-                <input ref={backgroundImageInputRef} hidden type="file" accept="image/*" onChange={loadBackgroundImage}/>
-                <div className="appearance-image-actions"><button type="button" className="secondary" onClick={()=>backgroundImageInputRef.current?.click()}><Upload /> Elegir imagen</button>{appearance.backgroundImage&&<button type="button" className="ghost danger" onClick={removeBackgroundImage}><Trash2 /> Quitar</button>}</div>
-              </div>
-              {appearance.backgroundImage && <label><span>Visibilidad de imagen: {appearance.backgroundImageOpacity}%</span><input type="range" min="10" max="100" step="1" value={appearance.backgroundImageOpacity} onChange={e=>updateAppearance('backgroundImageOpacity',Number(e.target.value))}/></label>}
-            </div>
-            <div className="appearance-preview"><div className="appearance-preview-card"><b>Vista previa</b><span>Tarjetas, tablas y paneles conservarán la misma funcionalidad.</span><button type="button">Botón principal</button></div></div>
-          </div>
-          <div className="theme-block">
             <h4>Atajos de teclado</h4>
             <div className="shortcut-grid"><div className="shortcut"><span>Nuevo ingreso</span><kbd>I</kbd></div><div className="shortcut"><span>Nuevo egreso</span><kbd>E</kbd></div><div className="shortcut"><span>Ir a cargar</span><kbd>N</kbd></div><div className="shortcut"><span>Abrir filtros</span><kbd>/</kbd></div></div>
           </div>
         </div>
+
 
         <h2>Control de categorías</h2>
         <p>Las categorías de ingresos y egresos se administran por separado y aparecen automáticamente en los formularios de carga.</p>
