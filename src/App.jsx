@@ -368,6 +368,11 @@ export default function App() {
   const [preferencesLoaded, setPreferencesLoaded] = useState(false)
   const [isMobileViewport, setIsMobileViewport] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 760px)').matches)
   const [mobileQuickMode, setMobileQuickMode] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 760px)').matches)
+  const [numbersHidden, setNumbersHidden] = useState(() => {
+    try { return localStorage.getItem('finance_hide_numbers') === 'true' }
+    catch { return false }
+  })
+  const privacyOriginalTextRef = useRef(new Map())
   const [recurringPayments, setRecurringPayments] = useState([])
   const [recurringForm, setRecurringForm] = useState({ name: '', amount: '', day: 1, category: '', account_id: '', active: true })
   const [creditPlans, setCreditPlans] = useState([])
@@ -391,6 +396,63 @@ export default function App() {
   const notificationsRequestRef = useRef(0)
   const mountedRef = useRef(true)
   useEffect(() => () => { mountedRef.current = false }, [])
+
+  useEffect(() => {
+    try { localStorage.setItem('finance_hide_numbers', String(numbersHidden)) } catch {}
+
+    const originals = privacyOriginalTextRef.current
+    const excludedTags = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEXTAREA', 'INPUT', 'SELECT', 'OPTION'])
+    const maskText = (text) => {
+      if (!/\d/.test(text)) return text
+      return text.replace(/(?:[$€£¥]\s*)?-?\d[\d.,:%/\-]*/g, 'xxxxxxx')
+    }
+    const processTextNode = (node) => {
+      const parent = node.parentElement
+      if (!parent || excludedTags.has(parent.tagName) || parent.closest('[data-privacy-ignore="true"]')) return
+      const current = node.nodeValue || ''
+      const stored = originals.get(node)
+      if (stored !== undefined) {
+        const maskedStored = maskText(stored)
+        if (current === maskedStored) return
+        originals.set(node, current)
+        const maskedCurrent = maskText(current)
+        if (maskedCurrent !== current) node.nodeValue = maskedCurrent
+        return
+      }
+      const masked = maskText(current)
+      if (masked !== current) {
+        originals.set(node, current)
+        node.nodeValue = masked
+      }
+    }
+    const processRoot = (root) => {
+      if (!root) return
+      if (root.nodeType === Node.TEXT_NODE) { processTextNode(root); return }
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+      let node
+      while ((node = walker.nextNode())) processTextNode(node)
+    }
+
+    if (!numbersHidden) {
+      originals.forEach((text, node) => {
+        if (node?.isConnected) node.nodeValue = text
+      })
+      originals.clear()
+      document.documentElement.classList.remove('privacy-numbers-hidden')
+      return
+    }
+
+    document.documentElement.classList.add('privacy-numbers-hidden')
+    processRoot(document.body)
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'characterData') processTextNode(mutation.target)
+        mutation.addedNodes?.forEach(processRoot)
+      })
+    })
+    observer.observe(document.body, { subtree: true, childList: true, characterData: true })
+    return () => observer.disconnect()
+  }, [numbersHidden])
 
   useEffect(() => {
     const onBeforeInstall = event => {
@@ -2421,6 +2483,10 @@ export default function App() {
         .mobile-quick-brand svg { width:23px; height:23px; }
         .mobile-quick-brand b { display:block; font-size:18px; }
         .mobile-quick-brand small { display:block; color:#8aa7c7; font-size:11px; }
+        .mobile-quick-controls { display:flex; align-items:center; gap:8px; margin-left:auto; }
+        .mobile-privacy-button { flex:0 0 auto; width:44px; height:44px; padding:0; border:1px solid #365675; background:#0d1c30; color:#dbeafe; border-radius:10px; display:grid; place-items:center; cursor:pointer; touch-action:manipulation; }
+        .mobile-privacy-button.active { color:#38bdf8; border-color:#38bdf8; box-shadow:0 0 0 2px rgba(56,189,248,.15); }
+        .mobile-privacy-button svg { position:static; width:21px; height:21px; }
         .mobile-full-button { flex:0 0 auto; border:1px solid #365675; background:#0d1c30; color:#dbeafe; border-radius:10px; min-height:44px; padding:9px 11px; font-weight:700; touch-action:manipulation; }
         .mobile-quick-title { margin:0 0 4px; font-size:24px; }
         .mobile-quick-subtitle { margin:0 0 16px; color:#8aa7c7; }
@@ -2448,12 +2514,25 @@ export default function App() {
         .mobile-recent-row strong { align-self:center; white-space:nowrap; }
         .mobile-empty { color:#8aa7c7; text-align:center; padding:16px 0; }
         .mobile-quick-app .notice { margin:0 0 12px; }
-        @media (max-width:520px) { .mobile-quick-head { align-items:flex-start; flex-wrap:wrap; } .mobile-full-button { margin-left:auto; } }
+        @media (max-width:520px) { .mobile-quick-head { align-items:flex-start; } .mobile-quick-controls { margin-left:auto; } }
         @media (max-width:390px) { .mobile-quick-kpis { grid-template-columns:1fr; } .mobile-quick-card.balance { grid-column:auto; } .mobile-quick-actions { grid-template-columns:1fr; } }
       `}</style>
       <div className="mobile-quick-head">
         <div className="mobile-quick-brand"><div><WalletCards /></div><div><b>Mis Finanzas</b><small>Vista rápida</small></div></div>
-        <button className="mobile-full-button" type="button" onClick={() => setMobileQuickMode(false)}>Vista completa</button>
+        <div className="mobile-quick-controls">
+          <button
+            className={`mobile-privacy-button ${numbersHidden ? 'active' : ''}`}
+            type="button"
+            onClick={() => setNumbersHidden(value => !value)}
+            title={numbersHidden ? 'Mostrar cifras' : 'Ocultar cifras'}
+            aria-label={numbersHidden ? 'Mostrar cifras' : 'Ocultar cifras'}
+            aria-pressed={numbersHidden}
+            data-privacy-ignore="true"
+          >
+            {numbersHidden ? <EyeOff /> : <Eye />}
+          </button>
+          <button className="mobile-full-button" type="button" onClick={() => setMobileQuickMode(false)}>Vista completa</button>
+        </div>
       </div>
       {notice && <div className="notice" onClick={() => setNotice('')}>{notice}</div>}
       <h1 className="mobile-quick-title">Resumen del mes</h1>
@@ -3066,6 +3145,10 @@ export default function App() {
       /* Vista de ingresos y egresos */
       .app-content{padding:20px 22px 34px!important;align-self:stretch!important}
       .toolbar{min-height:44px!important;margin:0 0 12px!important;padding:0!important;align-items:center!important}
+      .privacy-toggle{width:42px;height:42px;min-width:42px;padding:0!important;display:grid!important;place-items:center;border:1px solid var(--border);border-radius:12px;color:var(--muted);background:rgba(8,21,36,.58);backdrop-filter:blur(10px);transition:.2s ease}
+      .privacy-toggle:hover,.privacy-toggle.active{color:var(--text);border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 18%,transparent)}
+      .privacy-toggle svg{width:21px;height:21px}
+      .privacy-numbers-hidden input[type=number],.privacy-numbers-hidden input[type=date],.privacy-numbers-hidden input[type=month]{-webkit-text-security:disc}
       .table-panel{margin-top:0!important;width:100%!important;max-width:none!important}
       .table-panel .panel-title{padding:16px 18px!important;min-height:72px!important}
       .table-panel .table-wrap{max-height:calc(100vh - 255px)!important;overflow:auto!important}
@@ -3856,6 +3939,17 @@ export default function App() {
           : tab === 'big-expenses' || tab === 'savings' || tab === 'settings' || tab === 'calendar' || tab === 'compare' || tab === 'goals' || tab === 'control' || tab === 'account-management' || tab === 'recurring' || tab === 'credit'
             ? <span></span>
             : <label>Período <input type="month" value={month} onChange={e => setMonth(e.target.value)} /></label>}
+        <button
+          type="button"
+          className={`ghost privacy-toggle ${numbersHidden ? 'active' : ''}`}
+          onClick={() => setNumbersHidden(value => !value)}
+          title={numbersHidden ? 'Mostrar cifras' : 'Ocultar cifras'}
+          aria-label={numbersHidden ? 'Mostrar cifras' : 'Ocultar cifras'}
+          aria-pressed={numbersHidden}
+          data-privacy-ignore="true"
+        >
+          {numbersHidden ? <EyeOff /> : <Eye />}
+        </button>
         {tab === 'dashboard' && <small className="period-note"><CalendarDays /> Todos los indicadores corresponden al mes seleccionado</small>}
         {tab === 'analysis' && <small className="period-note"><CalendarDays /> Análisis histórico de todos los movimientos disponibles</small>}
       </div>
