@@ -318,6 +318,8 @@ export default function App() {
   const [forecastCategoryModalOpen, setForecastCategoryModalOpen] = useState(false)
   const [selectedForecastCategories, setSelectedForecastCategories] = useState(null)
   const [forecastCategoryDraft, setForecastCategoryDraft] = useState([])
+  const [budgetCategorySelectorOpen, setBudgetCategorySelectorOpen] = useState(false)
+  const [selectedBudgetCategories, setSelectedBudgetCategories] = useState(null)
   const [forecastRecurringDetailOpen, setForecastRecurringDetailOpen] = useState(false)
   const [forecastDetailOpen, setForecastDetailOpen] = useState({ balance:false, registered:false, pending:false, savings:false })
   const emptyFilters = { dateFrom: '', dateTo: '', category: 'all', minAmount: '', maxAmount: '' }
@@ -2365,6 +2367,43 @@ export default function App() {
     setForecastCategoryModalOpen(false)
   }
   const nextGoal = allocatedSavingsGoals.find(g => !g.completed)
+
+  useEffect(() => {
+    const availableNames = financeAnalysis.expenses.map(item => item.name)
+    const storageKey = `finance_budget_categories_${session?.user?.id || 'demo'}`
+
+    setSelectedBudgetCategories(current => {
+      if (Array.isArray(current)) {
+        const valid = current.filter(name => availableNames.includes(name))
+        try { localStorage.setItem(storageKey, JSON.stringify(valid)) } catch {}
+        return valid
+      }
+
+      try {
+        const saved = JSON.parse(localStorage.getItem(storageKey) || 'null')
+        if (Array.isArray(saved)) return saved.filter(name => availableNames.includes(name))
+      } catch {}
+
+      return availableNames
+    })
+  }, [financeAnalysis.expenses, session?.user?.id])
+
+  const updateSelectedBudgetCategories = (next) => {
+    setSelectedBudgetCategories(next)
+    try {
+      localStorage.setItem(`finance_budget_categories_${session?.user?.id || 'demo'}`, JSON.stringify(next))
+    } catch {}
+  }
+
+  const toggleBudgetCategory = (name) => {
+    const base = Array.isArray(selectedBudgetCategories)
+      ? selectedBudgetCategories
+      : financeAnalysis.expenses.map(item => item.name)
+    updateSelectedBudgetCategories(
+      base.includes(name) ? base.filter(item => item !== name) : [...base, name]
+    )
+  }
+
   const categoryBudgetStatus = useMemo(() => {
     const spentByCategory = monthRows
       .filter(item => item.type === 'expense' && savingsKind(item) !== 'deposit')
@@ -2374,7 +2413,12 @@ export default function App() {
         return out
       }, {})
 
+    const selectedNames = Array.isArray(selectedBudgetCategories)
+      ? selectedBudgetCategories
+      : financeAnalysis.expenses.map(item => item.name)
+
     return financeAnalysis.expenses
+      .filter(item => selectedNames.includes(item.name))
       .map(item => {
         const recommended = Number(item.suggestedReserve) || 0
         const spent = Number(spentByCategory[item.name]) || 0
@@ -2392,7 +2436,7 @@ export default function App() {
       })
       .filter(item => item.recommended > 0 || item.spent > 0)
       .sort((a, b) => b.percent - a.percent || b.spent - a.spent)
-  }, [financeAnalysis.expenses, monthRows])
+  }, [financeAnalysis.expenses, monthRows, selectedBudgetCategories])
 
   const unusualExpenses = useMemo(() => {
     const historical = financialMovements.filter(item => item.type === 'expense' && !isSavingsMovement(item))
@@ -3127,6 +3171,17 @@ export default function App() {
       .budget-progress-label{display:flex;justify-content:space-between;gap:8px;color:#8fa7c0;font-size:11px}
       .budget-status-pill{display:inline-flex;align-items:center;justify-content:center;min-width:78px;padding:5px 8px;border-radius:999px;font-size:11px;font-weight:800}
       .budget-status-pill.good{background:rgba(74,222,128,.13);color:#4ade80}.budget-status-pill.warning{background:rgba(245,158,11,.14);color:#f59e0b}.budget-status-pill.exceeded{background:rgba(251,113,133,.14);color:#fb7185}
+      .budget-panel-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+      .budget-category-selector{margin:0 0 12px;padding:12px;border:1px solid #29405c;border-radius:12px;background:#0a182a}
+      .budget-category-selector-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+      .budget-category-selector-head span{color:#9fb3c8;font-size:12px}
+      .budget-selector-actions{display:flex;gap:6px}
+      .budget-selector-actions button{padding:6px 9px;font-size:11px}
+      .budget-category-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:7px;max-height:180px;overflow:auto;padding-right:4px}
+      .budget-category-option{display:flex;align-items:center;gap:8px;padding:8px 9px;border:1px solid #243d58;border-radius:9px;background:#0d1c30;color:#dbe7f5;font-size:12px;cursor:pointer}
+      .budget-category-option:hover{border-color:#38bdf8;background:#10243c}
+      .budget-category-option input{width:15px;height:15px;accent-color:#38bdf8;flex:0 0 auto}
+      @media(max-width:700px){.budget-panel-actions{justify-content:flex-start}.budget-category-options{grid-template-columns:1fr}}
       .budget-negative{color:#fb7185!important}.budget-positive{color:#4ade80!important}
       .recent-movements-list{display:flex;flex-direction:column}
       .recent-movement{display:grid;grid-template-columns:38px minmax(0,1fr) auto;align-items:center;gap:12px;padding:11px 4px;border-bottom:1px solid rgba(41,64,92,.7)}
@@ -4085,8 +4140,36 @@ export default function App() {
                 <ChartInfoTitle title="Estado del presupuesto por categoría" text="Compara la reserva sugerida por el análisis financiero con lo gastado durante el mes seleccionado. Las categorías se ordenan desde la más comprometida hasta la más holgada." />
                 <span>Reserva sugerida frente al gasto real de {month}</span>
               </div>
-              <button className="ghost compact-action" onClick={()=>setTab('analysis')}>Ver análisis</button>
+              <div className="budget-panel-actions">
+                <button
+                  type="button"
+                  className="ghost compact-action"
+                  onClick={() => setBudgetCategorySelectorOpen(open => !open)}
+                  aria-expanded={budgetCategorySelectorOpen}
+                >
+                  <SlidersHorizontal /> Categorías ({Array.isArray(selectedBudgetCategories) ? selectedBudgetCategories.length : financeAnalysis.expenses.length})
+                </button>
+                <button className="ghost compact-action" onClick={()=>setTab('analysis')}>Ver análisis</button>
+              </div>
             </div>
+            {budgetCategorySelectorOpen && <div className="budget-category-selector">
+              <div className="budget-category-selector-head">
+                <span>Elegí las categorías que querés controlar en esta tabla.</span>
+                <div className="budget-selector-actions">
+                  <button type="button" className="ghost" onClick={() => updateSelectedBudgetCategories(financeAnalysis.expenses.map(item => item.name))}>Todas</button>
+                  <button type="button" className="ghost" onClick={() => updateSelectedBudgetCategories([])}>Ninguna</button>
+                </div>
+              </div>
+              <div className="budget-category-options">
+                {financeAnalysis.expenses.map(item => {
+                  const checked = !Array.isArray(selectedBudgetCategories) || selectedBudgetCategories.includes(item.name)
+                  return <label className="budget-category-option" key={item.name}>
+                    <input type="checkbox" checked={checked} onChange={() => toggleBudgetCategory(item.name)} />
+                    <span>{item.name}</span>
+                  </label>
+                })}
+              </div>
+            </div>}
             <div className="budget-status-wrap">
               <table className="budget-status-table">
                 <thead>
