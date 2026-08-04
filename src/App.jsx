@@ -2365,6 +2365,35 @@ export default function App() {
     setForecastCategoryModalOpen(false)
   }
   const nextGoal = allocatedSavingsGoals.find(g => !g.completed)
+  const categoryBudgetStatus = useMemo(() => {
+    const spentByCategory = monthRows
+      .filter(item => item.type === 'expense' && savingsKind(item) !== 'deposit')
+      .reduce((out, item) => {
+        const category = item.categories?.name || 'Sin categoría'
+        out[category] = (out[category] || 0) + (Number(item.amount) || 0)
+        return out
+      }, {})
+
+    return financeAnalysis.expenses
+      .map(item => {
+        const recommended = Number(item.suggestedReserve) || 0
+        const spent = Number(spentByCategory[item.name]) || 0
+        const remaining = recommended - spent
+        const percent = recommended > 0 ? (spent / recommended) * 100 : (spent > 0 ? 100 : 0)
+        const status = percent > 100 ? 'exceeded' : percent >= 80 ? 'warning' : 'good'
+        return {
+          name: item.name,
+          recommended,
+          spent,
+          remaining,
+          percent,
+          status
+        }
+      })
+      .filter(item => item.recommended > 0 || item.spent > 0)
+      .sort((a, b) => b.percent - a.percent || b.spent - a.spent)
+  }, [financeAnalysis.expenses, monthRows])
+
   const unusualExpenses = useMemo(() => {
     const historical = financialMovements.filter(item => item.type === 'expense' && !isSavingsMovement(item))
     const categoryStats = historical.reduce((out,item) => {
@@ -3080,6 +3109,25 @@ export default function App() {
       .category-corner{color:#a78bfa}.forecast-corner{color:#4ade80}
       .home-lower-panel{min-height:300px}
       .compact-action{padding:8px 12px!important;font-size:12px!important}
+      .home-recent-panel{grid-column:1;grid-row:2;min-height:0!important}
+      .home-recent-panel .recent-movement{padding:8px 4px}
+      .home-budget-panel{grid-column:1;grid-row:3;min-height:0!important}
+      .prediction-modern{grid-column:2;grid-row:2 / span 2}
+      .budget-status-wrap{overflow:auto;max-height:360px;border:1px solid rgba(41,64,92,.68);border-radius:12px}
+      .budget-status-table{width:100%;border-collapse:collapse;min-width:720px}
+      .budget-status-table th,.budget-status-table td{padding:11px 12px;border-bottom:1px solid rgba(41,64,92,.62);text-align:left;vertical-align:middle}
+      .budget-status-table th{position:sticky;top:0;z-index:2;background:#0b1a2d;color:#8fa7c0;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+      .budget-status-table tr:last-child td{border-bottom:0}
+      .budget-status-table td.right,.budget-status-table th.right{text-align:right}
+      .budget-category-name{font-weight:800;color:#e7eef8}
+      .budget-progress-cell{min-width:170px}
+      .budget-progress-track{height:8px;border-radius:999px;background:#17283d;overflow:hidden;margin-bottom:5px}
+      .budget-progress-fill{height:100%;border-radius:999px;transition:width .2s ease}
+      .budget-progress-fill.good{background:#4ade80}.budget-progress-fill.warning{background:#f59e0b}.budget-progress-fill.exceeded{background:#fb7185}
+      .budget-progress-label{display:flex;justify-content:space-between;gap:8px;color:#8fa7c0;font-size:11px}
+      .budget-status-pill{display:inline-flex;align-items:center;justify-content:center;min-width:78px;padding:5px 8px;border-radius:999px;font-size:11px;font-weight:800}
+      .budget-status-pill.good{background:rgba(74,222,128,.13);color:#4ade80}.budget-status-pill.warning{background:rgba(245,158,11,.14);color:#f59e0b}.budget-status-pill.exceeded{background:rgba(251,113,133,.14);color:#fb7185}
+      .budget-negative{color:#fb7185!important}.budget-positive{color:#4ade80!important}
       .recent-movements-list{display:flex;flex-direction:column}
       .recent-movement{display:grid;grid-template-columns:38px minmax(0,1fr) auto;align-items:center;gap:12px;padding:11px 4px;border-bottom:1px solid rgba(41,64,92,.7)}
       .recent-movement:last-child{border-bottom:0}
@@ -3095,7 +3143,7 @@ export default function App() {
       .chart-help>svg{position:static!important;width:13px!important;height:13px!important;background:transparent!important;border:0!important;padding:0!important;margin:0!important}
       .chart-help-tooltip{opacity:0!important;visibility:hidden!important}.chart-help:hover .chart-help-tooltip{opacity:1!important;visibility:visible!important}.chart-help:focus .chart-help-tooltip,.chart-help:focus-visible .chart-help-tooltip{opacity:0!important;visibility:hidden!important}
       @media(max-width:1250px){.home-summary-cards{grid-template-columns:repeat(3,minmax(0,1fr))!important}.home-quick-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-      @media(max-width:900px){.home-dashboard-grid{grid-template-columns:1fr}.home-category-chart,.prediction-layout{grid-template-columns:1fr}.home-summary-cards{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+      @media(max-width:900px){.home-dashboard-grid{grid-template-columns:1fr}.home-category-chart,.prediction-layout{grid-template-columns:1fr}.home-summary-cards{grid-template-columns:repeat(2,minmax(0,1fr))!important}.home-recent-panel,.home-budget-panel,.prediction-modern{grid-column:1!important;grid-row:auto!important}}
       @media(max-width:600px){.home-summary-cards{grid-template-columns:1fr!important}.home-quick-grid{grid-template-columns:1fr 1fr}.home-category-legend{padding-right:0}}
 
       /* Pestañas laterales y vistas independientes */
@@ -4014,7 +4062,7 @@ export default function App() {
             <span className="panel-corner-icon category-corner"><CircleDollarSign /></span>
           </article>
 
-          <article className="panel home-lower-panel">
+          <article className="panel home-lower-panel home-recent-panel">
             <div className="panel-title">
               <div><ChartInfoTitle title="Últimos movimientos" text="Muestra los movimientos más recientes de la cuenta, ordenados desde el último registro cargado." /><span>Los cinco registros más recientes</span></div>
               <button className="ghost compact-action" onClick={()=>setTab('dashboard')}>Ver todos</button>
@@ -4028,6 +4076,48 @@ export default function App() {
                 <strong className={x.type==='income'?'positive':'negative'}>{x.type==='income'?'+':'-'}{money(x.amount)}</strong>
               </div>)}
               {!movements.length && <div className="empty">Todavía no hay movimientos registrados.</div>}
+            </div>
+          </article>
+
+          <article className="panel home-lower-panel home-budget-panel">
+            <div className="panel-title">
+              <div>
+                <ChartInfoTitle title="Estado del presupuesto por categoría" text="Compara la reserva sugerida por el análisis financiero con lo gastado durante el mes seleccionado. Las categorías se ordenan desde la más comprometida hasta la más holgada." />
+                <span>Reserva sugerida frente al gasto real de {month}</span>
+              </div>
+              <button className="ghost compact-action" onClick={()=>setTab('analysis')}>Ver análisis</button>
+            </div>
+            <div className="budget-status-wrap">
+              <table className="budget-status-table">
+                <thead>
+                  <tr>
+                    <th>Categoría</th>
+                    <th className="right">Reserva sugerida</th>
+                    <th className="right">Gastado</th>
+                    <th className="right">Disponible</th>
+                    <th>Consumo</th>
+                    <th>Estado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {categoryBudgetStatus.map(item => {
+                    const cappedWidth = Math.min(Math.max(item.percent, 0), 100)
+                    const statusLabel = item.status === 'exceeded' ? 'Excedido' : item.status === 'warning' ? 'Atención' : 'Bien'
+                    return <tr key={item.name}>
+                      <td><span className="budget-category-name">{item.name}</span></td>
+                      <td className="right"><b>{money(item.recommended)}</b></td>
+                      <td className="right"><b>{money(item.spent)}</b></td>
+                      <td className={`right ${item.remaining < 0 ? 'budget-negative' : 'budget-positive'}`}><b>{item.remaining < 0 ? '- ' : ''}{money(Math.abs(item.remaining))}</b></td>
+                      <td className="budget-progress-cell">
+                        <div className="budget-progress-track"><div className={`budget-progress-fill ${item.status}`} style={{width:`${cappedWidth}%`}} /></div>
+                        <div className="budget-progress-label"><span>{item.percent.toFixed(1)}% usado</span><span>{item.status === 'exceeded' ? `${(item.percent-100).toFixed(1)}% excedido` : `${Math.max(100-item.percent,0).toFixed(1)}% disponible`}</span></div>
+                      </td>
+                      <td><span className={`budget-status-pill ${item.status}`}>{statusLabel}</span></td>
+                    </tr>
+                  })}
+                  {!categoryBudgetStatus.length && <tr><td colSpan="6" className="empty">No hay categorías con reserva sugerida para comparar.</td></tr>}
+                </tbody>
+              </table>
             </div>
           </article>
 
