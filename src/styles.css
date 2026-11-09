@@ -416,3 +416,6 @@ html[data-finance-background-mode] .control-card > h2 + p{
     height:var(--finance-fixed-header-height) !important;
   }
 }
+
+.primary-account-selector { display: flex; flex-direction: column; gap: 8px; margin-top: 18px; max-width: 360px; }
+.primary-account-selector select { width: 100%; min-height: 44px; }

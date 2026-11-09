@@ -53,3 +53,23 @@ Sin Supabase, los datos se guardan en el navegador. Con Supabase, se sincronizan
 Después de publicar el proyecto mediante HTTPS, puede instalarse desde Chrome/Edge con **Instalar aplicación** o desde Safari en iPhone/iPad mediante **Compartir → Agregar a pantalla de inicio**.
 
 Cada nueva ejecución de `npm run build` genera una versión diferente del service worker. Cuando esa compilación se publica, las instalaciones existentes muestran el aviso **Nueva versión disponible** y permiten aplicar los cambios con **Actualizar ahora**.
+
+## Cuenta principal y saldo de Inicio
+
+En **Gestión de cuentas**, pulsa **Elegir como principal**. Esa cuenta aparece
+primera y seleccionada al abrir un nuevo ingreso o egreso; editar un movimiento
+conserva su cuenta original. La preferencia se guarda localmente en modo local
+y por usuario en Supabase para sincronizarla entre dispositivos.
+
+En proyectos Supabase nuevos y existentes, ejecuta también
+`supabase/account_preferences.sql` en SQL Editor. Este cambio es aditivo y no
+modifica cuentas ni movimientos existentes.
+
+**Saldo actual** de Inicio muestra el saldo registrado de la cuenta principal
+hasta hoy (o la suma de todas las cuentas si no hay principal): saldo inicial
+más ingresos y transferencias recibidas, menos egresos y transferencias enviadas.
+El Dashboard y la predicción conservan los resultados del mes de todas las cuentas.
+No existe una conexión bancaria con Mercado Pago: para conciliar su saldo real
+hay que registrar el saldo inicial previo al historial y todos los movimientos,
+incluidos rendimientos, comisiones y transferencias. No cargues el saldo actual
+como saldo inicial si sus movimientos ya están registrados, porque se duplicaría.

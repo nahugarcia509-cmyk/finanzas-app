@@ -14,6 +14,12 @@ import { money, monthKey } from './lib/money'
 import { seedCategories, seedTransactions } from './lib/seedData'
 import Auth from './components/Auth'
 import MovementModal from './components/MovementModal'
+import { calculateAccountBalance, orderAccounts } from './lib/accounts'
+
+const localDate = () => {
+  const today = new Date()
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+}
 
 const demoAccounts = [
   { id: 'a1', name: 'Billetera', initial_balance: 0 },
@@ -300,6 +306,9 @@ function KpiInfoCard({ title, value, detail, icon, tone = '', help }) {
 export default function App() {
   const [session, setSession] = useState(null)
   const [accounts, setAccounts] = useState([])
+  const [primaryAccountId, setPrimaryAccountId] = useState('')
+  const orderedAccounts = useMemo(() => orderAccounts(accounts, primaryAccountId), [accounts, primaryAccountId])
+  const primaryAccount = accounts.find(account => account.id === primaryAccountId)
   const [categories, setCategories] = useState([])
   const [movements, setMovements] = useState([])
   const [loading, setLoading] = useState(true)
@@ -571,7 +580,10 @@ export default function App() {
         ...item,
         notes: item.notes === 'Dato histórico inicial' ? null : item.notes
       }))
-      setAccounts(demoAccounts)
+      setAccounts(JSON.parse(localStorage.getItem('finance_accounts_demo') || 'null') || demoAccounts)
+      setPrimaryAccountId(localStorage.getItem('finance_primary_account_demo') || '')
+      const localSettings = JSON.parse(localStorage.getItem('finance_user_settings_demo') || 'null')
+      if (localSettings) { setUserSettings(localSettings); setSettingsDraft(localSettings) }
       setCategories(cats)
       setMovements(cleanedInitialMovements)
       localStorage.setItem('finance_categories', JSON.stringify(cats))
@@ -585,6 +597,8 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    if (!configured) return
+    setPrimaryAccountId('')
     loadRequestRef.current += 1
     const [y, m] = monthKey().split('-').map(Number)
     const previousMonth = `${m === 1 ? y - 1 : y}-${String(m === 1 ? 12 : m - 1).padStart(2, '0')}`
@@ -905,6 +919,9 @@ export default function App() {
       const loadedSettings = settingsResult.data || { opening_balance_month: '', opening_balance_amount: 0, theme: 'blue', background_theme: 'navy', sidebar_open: true, selected_income_categories: null, selected_reserve_categories: null, selected_forecast_categories: null, savings_goals: [] }
 
       if (!mountedRef.current || requestId !== loadRequestRef.current) return
+      const preferenceResult = await supabase.from('account_preferences').select('primary_account_id').eq('user_id', currentUserId).maybeSingle()
+      if (!mountedRef.current || requestId !== loadRequestRef.current) return
+      setPrimaryAccountId(preferenceResult.data?.primary_account_id || '')
       setAccounts(ownAccounts)
       setCategories(ownCategories)
       setMovements(recentMovements)
@@ -1043,12 +1060,15 @@ export default function App() {
     if (!name) return setNotice('Ingrese un nombre para la cuenta.')
 
     if (!configured) {
-      setAccounts(current => wasEditing
+      setAccounts(current => {
+        const next = wasEditing
         ? current.map(account => account.id === editingAccountId
           ? { ...account, name, initial_balance: initialBalance }
           : account)
         : [...current, { id: crypto.randomUUID(), name, initial_balance: initialBalance }]
-      )
+        localStorage.setItem('finance_accounts_demo', JSON.stringify(next))
+        return next
+      })
       resetAccountForm()
       setNotice(wasEditing ? 'Cuenta actualizada.' : 'Cuenta creada.')
       return
@@ -1094,7 +1114,11 @@ export default function App() {
       onConfirm: async () => {
         if (!configured) {
           setMovements(current => current.map(m => m.account_id === account.id ? { ...m, account_id: null, accounts: null } : m))
-          setAccounts(current => current.filter(a => a.id !== account.id))
+          setAccounts(current => {
+            const next = current.filter(a => a.id !== account.id)
+            localStorage.setItem('finance_accounts_demo', JSON.stringify(next))
+            return next
+          })
           editingAccountId === account.id && resetAccountForm()
           return
         }
@@ -1201,19 +1225,22 @@ export default function App() {
     })
   }
 
-  const accountBalance = (accountId) => {
-    const account = accounts.find(a => a.id === accountId)
-    if (!account) return 0
+  const accountBalance = (accountId) => calculateAccountBalance(
+    accounts.find(account => account.id === accountId), movements, localDate()
+  )
 
-    return movements
-      .filter(movement => movement.account_id === accountId)
-      .reduce((balance, movement) => {
-        const amount = Number(movement.amount) || 0
-        const notes = String(movement.notes || '')
-        if (notes.includes(TRANSFER_IN)) return balance + amount
-        if (notes.includes(TRANSFER_OUT)) return balance - amount
-        return movement.type === 'income' ? balance + amount : balance - amount
-      }, Number(account.initial_balance) || 0)
+  const savePrimaryAccount = async (accountId) => {
+    if (configured) {
+      if (!session?.user?.id) return
+      const { error } = await supabase.from('account_preferences').upsert({
+        user_id: session.user.id, primary_account_id: accountId || null
+      }, { onConflict: 'user_id' })
+      if (error) return setNotice(`No se pudo guardar la cuenta principal. Verifica que se haya aplicado supabase/account_preferences.sql. ${error.message}`)
+    } else {
+      localStorage.setItem('finance_primary_account_demo', accountId)
+    }
+    setPrimaryAccountId(accountId)
+    setNotice('Cuenta principal actualizada.')
   }
 
   const openNew = (type) => { setEditing(null); setNewType(type); setModal(true) }
@@ -2277,9 +2304,13 @@ export default function App() {
     forecastExpenseCurrent
   ) + scheduledCommitmentsPending
 
-  // La predicción parte exactamente del mismo "Saldo actual" mostrado en Inicio.
-  // Ese saldo ya contiene todos los ingresos, egresos y aportes a ahorros registrados
-  // hasta hoy. Por eso solamente se descuentan los gastos que todavía faltan proyectar.
+  const balanceDate = localDate()
+  const availableBalance = primaryAccount
+    ? calculateAccountBalance(primaryAccount, movements, balanceDate)
+    : accounts.reduce((total, account) => total + calculateAccountBalance(account, movements, balanceDate), 0)
+  const availableBalanceDetail = primaryAccount ? primaryAccount.name : 'Todas las cuentas'
+
+  // La predicción conserva el alcance mensual de todas las cuentas.
   const currentForecastBalance = closingBalance
   const forecastRemainingExpense = Math.max(forecastExpense - forecastExpenseCurrent, 0)
   const forecastClosing = currentForecastBalance - forecastRemainingExpense
@@ -2611,7 +2642,7 @@ export default function App() {
       <h1 className="mobile-quick-title">Resumen del mes</h1>
       <p className="mobile-quick-subtitle">{month}</p>
       <section className="mobile-quick-kpis">
-        <article className="mobile-quick-card balance"><span>Saldo disponible</span><strong>{money(closingBalance)}</strong><WalletCards /></article>
+        <article className="mobile-quick-card balance"><span>Saldo disponible</span><strong>{money(availableBalance)}</strong><small>{availableBalanceDetail}</small><WalletCards /></article>
         <article className="mobile-quick-card income"><span>Ingresos del mes</span><strong>{money(income)}</strong><ArrowUpCircle /></article>
         <article className="mobile-quick-card expense"><span>Egresos del mes</span><strong>{money(expenseWithoutSavings)}</strong><ArrowDownCircle /></article>
       </section>
@@ -2629,10 +2660,10 @@ export default function App() {
       </section>
       {modal && <MovementModal
         open={modal}
-        type={newType}
-        accounts={accounts}
+        defaultType={newType}
+        accounts={orderedAccounts}
         categories={categories}
-        movement={editing}
+        editing={editing}
         onClose={() => { setModal(false); setEditing(null) }}
         onSave={save}
       />}
@@ -4055,7 +4086,7 @@ export default function App() {
         </section>
 
         <section className="kpis home-summary-cards">
-          <KpiInfoCard title="Saldo actual" value={money(closingBalance)} detail={`Actualizado a ${month}`} icon={<WalletCards/>} tone={closingBalance>=0?'positive':'negative'} help="Es el dinero disponible al finalizar el mes seleccionado. Se calcula sumando el saldo inicial y los ingresos, y restando los egresos y los aportes enviados a ahorros." />
+          <KpiInfoCard title="Saldo actual" value={money(availableBalance)} detail={`${availableBalanceDetail} · al ${balanceDate}`} icon={<WalletCards/>} tone={availableBalance>=0?'positive':'negative'} help="Saldo inicial de la cuenta principal más sus ingresos y transferencias recibidas, menos sus egresos y transferencias enviadas, hasta hoy. Si no elegiste una cuenta principal, muestra la suma de todas las cuentas. No consulta el saldo de Mercado Pago automáticamente." />
           <KpiInfoCard title="Gastado este mes" value={money(expenseWithoutSavings)} detail={`${expenseRowsWithoutSavings.length} egresos`} icon={<TrendingDown/>} tone="negative" help="Suma todos los egresos del mes seleccionado, sin contar el dinero trasladado a la sección Ahorros." />
           <KpiInfoCard title="Ahorrado este mes" value={money(monthlySavingsDeposits)} detail={`Saldo total ${money(savingsBalance)}`} icon={<PiggyBank/>} tone="info" help="Muestra cuánto dinero fue guardado durante el mes seleccionado. El detalle inferior indica el saldo total acumulado en ahorros." />
           <KpiInfoCard title="Próxima meta" value={nextGoal ? money(nextGoal.remaining) : 'Sin meta'} detail={nextGoal?.name || 'Crear una meta en Ahorros'} icon={<Target/>} tone="purple" help="Indica cuánto falta para completar la meta de ahorro activa con mayor prioridad." />
@@ -4215,7 +4246,7 @@ export default function App() {
                 <div className="forecast-summary-list">
                   <div className="forecast-expandable-row">
                     <div className="forecast-recurring-heading">
-                      <span className="forecast-summary-label">Saldo actual <InlineHelp text="Es el mismo saldo actual que se muestra en la tarjeta de Inicio. Se actualiza con todos los ingresos, egresos y aportes a ahorros registrados hasta hoy, y es el punto de partida de la predicción." /></span>
+                      <span className="forecast-summary-label">Saldo mensual <InlineHelp text="Saldo del mes seleccionado de todas las cuentas. Tiene un alcance diferente del saldo de la cuenta principal mostrado en Inicio." /></span>
                       <button type="button" className="forecast-detail-toggle" onClick={() => toggleForecastDetail('balance')} aria-expanded={forecastDetailOpen.balance}>
                         {forecastDetailOpen.balance ? 'Ocultar detalle' : 'Ver detalle'}
                         <ChevronDown className={forecastDetailOpen.balance ? 'open' : ''} />
@@ -4224,7 +4255,7 @@ export default function App() {
                     <b>{money(currentForecastBalance)}</b>
                   </div>
                   {forecastDetailOpen.balance && <div className="forecast-recurring-detail">
-                    <small className="forecast-detail-section-title">Composición del saldo actual</small>
+                    <small className="forecast-detail-section-title">Composición del saldo mensual</small>
                     <div className="forecast-detail-item"><div><strong>Saldo al iniciar el mes</strong><small>Saldo acumulado de meses anteriores</small></div><span>{money(openingBalance)}</span></div>
                     <div className="forecast-detail-item"><div><strong>Ingresos registrados</strong><small>Ingresos cargados durante el mes</small></div><span className="positive">+ {money(income)}</span></div>
                     <div className="forecast-detail-item"><div><strong>Egresos registrados</strong><small>Incluye gastos y aportes enviados a ahorros</small></div><span className="negative">- {money(expense)}</span></div>
@@ -4888,6 +4919,12 @@ export default function App() {
           <div>
             <h1>Gestión de cuentas</h1>
             <p>Consultar, crear y organizar el dinero disponible en cada cuenta.</p>
+            <label className="primary-account-selector">Cuenta principal
+              <select aria-label="Cuenta principal" value={primaryAccount?.id || ''} onChange={event => savePrimaryAccount(event.target.value)}>
+                <option value="">Todas las cuentas en Inicio</option>
+                {accounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}
+              </select>
+            </label>
           </div>
         </section>
 
@@ -4910,10 +4947,10 @@ export default function App() {
             />
             <KpiInfoCard
               title="Cuenta principal"
-              value={accountDashboardData[0]?.name || 'Sin cuentas'}
-              detail={accountDashboardData.length ? money(accountDashboardData[0]?.saldo || 0) : 'Sin saldo'}
+              value={primaryAccount?.name || 'Sin elegir'}
+              detail={primaryAccount ? money(accountBalance(primaryAccount.id)) : 'Elige tu cuenta debajo del título'}
               icon={<TrendingUp />}
-              help="Identifica la cuenta que actualmente tiene el mayor saldo disponible."
+              help="Es la cuenta que elegiste para el saldo de Inicio y para nuevos ingresos o egresos. Puedes cambiarla en el selector de esta página."
             />
             <KpiInfoCard
               title="Transferencias del mes"
@@ -4986,7 +5023,7 @@ export default function App() {
 
         <section className="panel accounts-management-page">
           <div className="control-subpanel account-management">
-            <div className="control-subpanel-title"><WalletCards /><div><h3>Cuentas</h3><span>Crear, editar y eliminar cuentas. El saldo se carga y modifica manualmente.</span></div></div>
+            <div className="control-subpanel-title"><WalletCards /><div><h3>Cuentas</h3><span>Elige la cuenta principal para Inicio y para registrar ingresos o egresos. El saldo registrado se calcula como saldo inicial más movimientos; no se consulta automáticamente a Mercado Pago.</span></div></div>
             <form className="account-management-form" onSubmit={saveAccountRecord}>
               <label>Nombre de la cuenta<input value={accountForm.name} onChange={e => setAccountForm(current => ({ ...current, name: e.target.value }))} placeholder="Ej. Banco o efectivo" /></label>
               <label>Saldo inicial<input type="number" step="0.01" value={accountForm.initial_balance} onChange={e => setAccountForm(current => ({ ...current, initial_balance: e.target.value }))} placeholder="0,00" /></label>
@@ -4995,10 +5032,11 @@ export default function App() {
             </form>
             <div className="account-cards-grid">
               {accounts.map(account => <article className="account-card" key={account.id}>
-                <div><b>{account.name}</b><small>Saldo actual</small></div>
+                <div><b>{account.name}</b><small>{account.id === primaryAccountId ? 'Cuenta principal · Saldo registrado' : 'Saldo registrado'}</small></div>
                 <strong>{money(accountBalance(account.id))}</strong>
                 <div className="row-actions">
-                  <button type="button" className="ghost" onClick={() => startEditingAccount(account)}><Pencil /></button>
+                  <button type="button" className="ghost" aria-pressed={account.id === primaryAccountId} onClick={() => savePrimaryAccount(account.id)}>{account.id === primaryAccountId ? 'Principal' : 'Elegir como principal'}</button>
+                  <button type="button" className="ghost" aria-label={`Editar ${account.name}`} onClick={() => startEditingAccount(account)}><Pencil /></button>
                   <button type="button" className="ghost danger" onClick={() => removeAccount(account)}><Trash2 /></button>
                 </div>
               </article>)}
@@ -5198,6 +5236,6 @@ export default function App() {
         </div>
       </div>
     </div>}
-    <MovementModal open={modal} onClose={() => { setModal(false); setEditing(null) }} onSave={save} accounts={accounts} categories={categories} editing={editing} defaultType={newType} />
+    <MovementModal open={modal} onClose={() => { setModal(false); setEditing(null) }} onSave={save} accounts={orderedAccounts} categories={categories} editing={editing} defaultType={newType} />
   </div>
 }
