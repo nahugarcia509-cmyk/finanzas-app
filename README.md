@@ -70,3 +70,10 @@ saldo anterior más ingresos, menos egresos y aportes a ahorros. Coincide con el
 saldo final del Dashboard mensual y es la base de la predicción. Elegir una
 cuenta principal solo establece la cuenta predeterminada al registrar movimientos;
 no reemplaza el saldo de Inicio por el saldo registrado de esa cuenta.
+
+En **Gestión de cuentas**, el total distribuido coincide con el saldo del balance
+del mes seleccionado. Las cuentas secundarias conservan su saldo inicial más
+movimientos hasta ese mes. La principal muestra el saldo del balance menos la
+suma de las secundarias; su saldo inicial individual no se suma nuevamente.
+Si no elegiste una principal, el remanente se muestra en la cuenta con mayor
+saldo registrado. Este cálculo no modifica los importes guardados ni movimientos.

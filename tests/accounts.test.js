@@ -23,3 +23,25 @@ test('la cuenta principal queda primera sin alterar la lista original; una prefe
   assert.equal(accounts[0].id, 'cash')
   assert.deepEqual(orderAccounts(accounts, 'deleted'), accounts)
 })
+
+test('Mercado Pago coincide con el balance si las demás cuentas están en cero, sin duplicar su saldo inicial', async () => {
+  const { distributeAccountBalances } = await import('../src/lib/accounts.js')
+  const accounts = [{ id: 'mp', name: 'Mercado Pago', initial_balance: 1002486.29 }, { id: 'nx', initial_balance: 0 }, { id: 's', initial_balance: 0 }]
+  const movements = [{ account_id: 'mp', date: '2026-11-01', type: 'income', amount: 2268573.1 }]
+  const result = distributeAccountBalances(accounts, movements, 'mp', 2268573.1, '2026-11')
+  assert.equal(result.find(a => a.id === 'mp').saldo, 2268573.1)
+  assert.equal(result.reduce((sum, a) => sum + a.saldo, 0), 2268573.1)
+  assert.equal(accounts[0].initial_balance, 1002486.29)
+  assert.equal(distributeAccountBalances(accounts, movements, '', 2268573.1, '2026-11')[0].saldo, 2268573.1)
+})
+
+test('la distribución respeta las otras cuentas y excluye sus movimientos de meses posteriores', async () => {
+  const { distributeAccountBalances } = await import('../src/lib/accounts.js')
+  const accounts = [{ id: 'mp', initial_balance: 9000 }, { id: 'bank', initial_balance: 100 }]
+  const movements = [{ account_id: 'bank', date: '2026-11-01', type: 'income', amount: 50 }, { account_id: 'bank', date: '2026-12-01', type: 'income', amount: 800 }]
+  const result = distributeAccountBalances(accounts, movements, 'mp', 1000, '2026-11')
+  assert.equal(result.find(a => a.id === 'bank').saldo, 150)
+  assert.equal(result.find(a => a.id === 'mp').saldo, 850)
+  assert.equal(result.reduce((sum, a) => sum + a.saldo, 0), 1000)
+  assert.deepEqual(distributeAccountBalances([], movements, '', 1000, '2026-11'), [])
+})

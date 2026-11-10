@@ -14,12 +14,7 @@ import { money, monthKey } from './lib/money'
 import { seedCategories, seedTransactions } from './lib/seedData'
 import Auth from './components/Auth'
 import MovementModal from './components/MovementModal'
-import { calculateAccountBalance, orderAccounts } from './lib/accounts'
-
-const localDate = () => {
-  const today = new Date()
-  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
-}
+import { distributeAccountBalances, orderAccounts } from './lib/accounts'
 
 const demoAccounts = [
   { id: 'a1', name: 'Billetera', initial_balance: 0 },
@@ -1224,10 +1219,6 @@ export default function App() {
       }
     })
   }
-
-  const accountBalance = (accountId) => calculateAccountBalance(
-    accounts.find(account => account.id === accountId), movements, localDate()
-  )
 
   const savePrimaryAccount = async (accountId) => {
     if (configured) {
@@ -2517,14 +2508,10 @@ export default function App() {
   }, [month, monthRows])
 
 
-  const accountDashboardData = useMemo(() => accounts
-    .map((account, index) => ({
-      id: account.id,
-      name: account.name || `Cuenta ${index + 1}`,
-      saldo: accountBalance(account.id),
-      index
-    }))
-    .sort((a, b) => b.saldo - a.saldo), [accounts, movements, closingBalance, savingsBalance])
+  const accountDashboardData = useMemo(() => distributeAccountBalances(
+    accounts, movements, primaryAccountId, closingBalance, month
+  ).sort((a, b) => b.saldo - a.saldo), [accounts, movements, primaryAccountId, closingBalance, month])
+  const accountBalance = (accountId) => accountDashboardData.find(account => account.id === accountId)?.saldo || 0
 
   const totalAccountBalance = useMemo(
     () => accountDashboardData.reduce((sum, account) => sum + Number(account.saldo || 0), 0),
@@ -4912,7 +4899,7 @@ export default function App() {
         <section className="page-heading accounts-page-heading">
           <div>
             <h1>Gestión de cuentas</h1>
-            <p>Consultar, crear y organizar el dinero disponible en cada cuenta.</p>
+            <p>Distribución del saldo del balance de {month}. La cuenta principal muestra el saldo restante después de las demás cuentas.</p>
             <label className="primary-account-selector">Cuenta principal
               <select aria-label="Cuenta principal" value={primaryAccount?.id || ''} onChange={event => savePrimaryAccount(event.target.value)}>
                 <option value="">Sin cuenta predeterminada</option>
@@ -4937,7 +4924,7 @@ export default function App() {
               detail="Suma de los saldos visibles de todas las cuentas"
               icon={<WalletCards />}
               tone="positive"
-              help="Suma el saldo actual mostrado en cada cuenta. Incluye el saldo de la cuenta principal y los ajustes realizados mediante transferencias."
+              help="Distribuye el saldo del balance del mes seleccionado entre las cuentas. La principal muestra el saldo del balance menos lo registrado en las demás cuentas."
             />
             <KpiInfoCard
               title="Cuenta principal"
@@ -5017,7 +5004,7 @@ export default function App() {
 
         <section className="panel accounts-management-page">
           <div className="control-subpanel account-management">
-            <div className="control-subpanel-title"><WalletCards /><div><h3>Cuentas</h3><span>Elige la cuenta predeterminada para registrar ingresos o egresos. El saldo de Inicio se obtiene del balance mensual. El saldo registrado se calcula como saldo inicial más movimientos; no se consulta automáticamente a Mercado Pago.</span></div></div>
+            <div className="control-subpanel-title"><WalletCards /><div><h3>Cuentas</h3><span>Elige la cuenta predeterminada para registrar ingresos o egresos. Los saldos corresponden al mes seleccionado. La principal muestra el saldo del balance menos los saldos de las demás cuentas, sin sumar nuevamente su saldo inicial individual. No se consulta automáticamente a Mercado Pago.</span></div></div>
             <form className="account-management-form" onSubmit={saveAccountRecord}>
               <label>Nombre de la cuenta<input value={accountForm.name} onChange={e => setAccountForm(current => ({ ...current, name: e.target.value }))} placeholder="Ej. Banco o efectivo" /></label>
               <label>Saldo inicial<input type="number" step="0.01" value={accountForm.initial_balance} onChange={e => setAccountForm(current => ({ ...current, initial_balance: e.target.value }))} placeholder="0,00" /></label>
@@ -5026,7 +5013,7 @@ export default function App() {
             </form>
             <div className="account-cards-grid">
               {accounts.map(account => <article className="account-card" key={account.id}>
-                <div><b>{account.name}</b><small>{account.id === primaryAccountId ? 'Cuenta principal · Saldo registrado' : 'Saldo registrado'}</small></div>
+                <div><b>{account.name}</b><small>{account.id === primaryAccountId ? 'Cuenta principal · Saldo del balance' : 'Saldo registrado'}</small></div>
                 <strong>{money(accountBalance(account.id))}</strong>
                 <div className="row-actions">
                   <button type="button" className="ghost" aria-pressed={account.id === primaryAccountId} onClick={() => savePrimaryAccount(account.id)}>{account.id === primaryAccountId ? 'Principal' : 'Elegir como principal'}</button>
