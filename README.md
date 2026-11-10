@@ -65,11 +65,8 @@ En proyectos Supabase nuevos y existentes, ejecuta también
 `supabase/account_preferences.sql` en SQL Editor. Este cambio es aditivo y no
 modifica cuentas ni movimientos existentes.
 
-**Saldo actual** de Inicio muestra el saldo registrado de la cuenta principal
-hasta hoy (o la suma de todas las cuentas si no hay principal): saldo inicial
-más ingresos y transferencias recibidas, menos egresos y transferencias enviadas.
-El Dashboard y la predicción conservan los resultados del mes de todas las cuentas.
-No existe una conexión bancaria con Mercado Pago: para conciliar su saldo real
-hay que registrar el saldo inicial previo al historial y todos los movimientos,
-incluidos rendimientos, comisiones y transferencias. No cargues el saldo actual
-como saldo inicial si sus movimientos ya están registrados, porque se duplicaría.
+**Saldo actual** de Inicio conserva el resultado del balance del mes seleccionado:
+saldo anterior más ingresos, menos egresos y aportes a ahorros. Coincide con el
+saldo final del Dashboard mensual y es la base de la predicción. Elegir una
+cuenta principal solo establece la cuenta predeterminada al registrar movimientos;
+no reemplaza el saldo de Inicio por el saldo registrado de esa cuenta.

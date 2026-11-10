@@ -2304,12 +2304,6 @@ export default function App() {
     forecastExpenseCurrent
   ) + scheduledCommitmentsPending
 
-  const balanceDate = localDate()
-  const availableBalance = primaryAccount
-    ? calculateAccountBalance(primaryAccount, movements, balanceDate)
-    : accounts.reduce((total, account) => total + calculateAccountBalance(account, movements, balanceDate), 0)
-  const availableBalanceDetail = primaryAccount ? primaryAccount.name : 'Todas las cuentas'
-
   // La predicción conserva el alcance mensual de todas las cuentas.
   const currentForecastBalance = closingBalance
   const forecastRemainingExpense = Math.max(forecastExpense - forecastExpenseCurrent, 0)
@@ -2642,7 +2636,7 @@ export default function App() {
       <h1 className="mobile-quick-title">Resumen del mes</h1>
       <p className="mobile-quick-subtitle">{month}</p>
       <section className="mobile-quick-kpis">
-        <article className="mobile-quick-card balance"><span>Saldo disponible</span><strong>{money(availableBalance)}</strong><small>{availableBalanceDetail}</small><WalletCards /></article>
+        <article className="mobile-quick-card balance"><span>Saldo disponible</span><strong>{money(closingBalance)}</strong><WalletCards /></article>
         <article className="mobile-quick-card income"><span>Ingresos del mes</span><strong>{money(income)}</strong><ArrowUpCircle /></article>
         <article className="mobile-quick-card expense"><span>Egresos del mes</span><strong>{money(expenseWithoutSavings)}</strong><ArrowDownCircle /></article>
       </section>
@@ -4086,7 +4080,7 @@ export default function App() {
         </section>
 
         <section className="kpis home-summary-cards">
-          <KpiInfoCard title="Saldo actual" value={money(availableBalance)} detail={`${availableBalanceDetail} · al ${balanceDate}`} icon={<WalletCards/>} tone={availableBalance>=0?'positive':'negative'} help="Saldo inicial de la cuenta principal más sus ingresos y transferencias recibidas, menos sus egresos y transferencias enviadas, hasta hoy. Si no elegiste una cuenta principal, muestra la suma de todas las cuentas. No consulta el saldo de Mercado Pago automáticamente." />
+          <KpiInfoCard title="Saldo actual" value={money(closingBalance)} detail={`Actualizado a ${month}`} icon={<WalletCards/>} tone={closingBalance>=0?'positive':'negative'} help="Saldo del balance del mes seleccionado: saldo anterior más ingresos, menos egresos y aportes a ahorros. Elegir una cuenta principal solo cambia la cuenta predeterminada para nuevos movimientos." />
           <KpiInfoCard title="Gastado este mes" value={money(expenseWithoutSavings)} detail={`${expenseRowsWithoutSavings.length} egresos`} icon={<TrendingDown/>} tone="negative" help="Suma todos los egresos del mes seleccionado, sin contar el dinero trasladado a la sección Ahorros." />
           <KpiInfoCard title="Ahorrado este mes" value={money(monthlySavingsDeposits)} detail={`Saldo total ${money(savingsBalance)}`} icon={<PiggyBank/>} tone="info" help="Muestra cuánto dinero fue guardado durante el mes seleccionado. El detalle inferior indica el saldo total acumulado en ahorros." />
           <KpiInfoCard title="Próxima meta" value={nextGoal ? money(nextGoal.remaining) : 'Sin meta'} detail={nextGoal?.name || 'Crear una meta en Ahorros'} icon={<Target/>} tone="purple" help="Indica cuánto falta para completar la meta de ahorro activa con mayor prioridad." />
@@ -4921,7 +4915,7 @@ export default function App() {
             <p>Consultar, crear y organizar el dinero disponible en cada cuenta.</p>
             <label className="primary-account-selector">Cuenta principal
               <select aria-label="Cuenta principal" value={primaryAccount?.id || ''} onChange={event => savePrimaryAccount(event.target.value)}>
-                <option value="">Todas las cuentas en Inicio</option>
+                <option value="">Sin cuenta predeterminada</option>
                 {accounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}
               </select>
             </label>
@@ -4950,7 +4944,7 @@ export default function App() {
               value={primaryAccount?.name || 'Sin elegir'}
               detail={primaryAccount ? money(accountBalance(primaryAccount.id)) : 'Elige tu cuenta debajo del título'}
               icon={<TrendingUp />}
-              help="Es la cuenta que elegiste para el saldo de Inicio y para nuevos ingresos o egresos. Puedes cambiarla en el selector de esta página."
+              help="Es la cuenta predeterminada para nuevos ingresos o egresos. Puedes cambiarla en el selector de esta página. No modifica el saldo del balance de Inicio."
             />
             <KpiInfoCard
               title="Transferencias del mes"
@@ -5023,7 +5017,7 @@ export default function App() {
 
         <section className="panel accounts-management-page">
           <div className="control-subpanel account-management">
-            <div className="control-subpanel-title"><WalletCards /><div><h3>Cuentas</h3><span>Elige la cuenta principal para Inicio y para registrar ingresos o egresos. El saldo registrado se calcula como saldo inicial más movimientos; no se consulta automáticamente a Mercado Pago.</span></div></div>
+            <div className="control-subpanel-title"><WalletCards /><div><h3>Cuentas</h3><span>Elige la cuenta predeterminada para registrar ingresos o egresos. El saldo de Inicio se obtiene del balance mensual. El saldo registrado se calcula como saldo inicial más movimientos; no se consulta automáticamente a Mercado Pago.</span></div></div>
             <form className="account-management-form" onSubmit={saveAccountRecord}>
               <label>Nombre de la cuenta<input value={accountForm.name} onChange={e => setAccountForm(current => ({ ...current, name: e.target.value }))} placeholder="Ej. Banco o efectivo" /></label>
               <label>Saldo inicial<input type="number" step="0.01" value={accountForm.initial_balance} onChange={e => setAccountForm(current => ({ ...current, initial_balance: e.target.value }))} placeholder="0,00" /></label>
