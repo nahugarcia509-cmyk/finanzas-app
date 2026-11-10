@@ -36,3 +36,35 @@ test('guardar el saldo real de Mercado Pago no duplica los movimientos y no afec
   assert.equal(initialBalanceForCurrentBalance('mp', future, 2268573.1, '2026-11-10'), corrected.initial_balance)
   assert.equal(calculateAccountBalance(corrected, future, '2026-12-01'), 2268473.1)
 })
+
+test('transferir todo a Santander y gastar allí actualiza cada cuenta sin cambiar el total de la transferencia', () => {
+  const mp = { id: 'mp', initial_balance: 2268573.1 }
+  const bank = { id: 's', initial_balance: 0 }
+  const rows = [
+    { id: 'out', account_id: 'mp', date: '2026-11-10', type: 'expense', amount: 2268573.1, notes: '[TRANSFER_OUT] t' },
+    { id: 'in', account_id: 's', date: '2026-11-10', type: 'income', amount: 2268573.1, notes: '[TRANSFER_IN] t' }
+  ]
+  assert.equal(calculateAccountBalance(mp, rows), 0)
+  assert.equal(calculateAccountBalance(bank, rows), 2268573.1)
+  rows.push({ id: 'expense', account_id: 's', date: '2026-11-10', type: 'expense', amount: 1000 })
+  assert.equal(calculateAccountBalance(bank, rows), 2267573.1)
+  rows[2] = { ...rows[2], account_id: 'mp', amount: 500 }
+  assert.equal(calculateAccountBalance(mp, rows), -500)
+  assert.equal(calculateAccountBalance(bank, rows), 2268573.1)
+  assert.equal(calculateAccountBalance(mp, rows.slice(0, 2)), 0)
+})
+
+test('ahorro entre cuentas se descuenta una vez, con enlaces nuevos e historial anterior', () => {
+  const mp = { id: 'mp', initial_balance: 1000 }
+  const bank = { id: 's', initial_balance: 0 }
+  const rows = [
+    { account_id: 'mp', date: '2026-11-10', type: 'expense', amount: 200, notes: '[SAVINGS_DEPOSIT] Ahorro' },
+    { account_id: 'mp', date: '2026-11-10', type: 'expense', amount: 200, description: 'Ahorro de Mercado Pago a Santander', notes: '[TRANSFER_OUT] t' },
+    { account_id: 's', date: '2026-11-10', type: 'income', amount: 200, description: 'Ahorro de Mercado Pago a Santander', notes: '[TRANSFER_IN] t' }
+  ]
+  assert.equal(calculateAccountBalance(mp, rows), 800)
+  assert.equal(calculateAccountBalance(bank, rows), 200)
+  rows[0].notes = '[SAVINGS_DEPOSIT] [ACCOUNT_TRANSFER:t] Ahorro'
+  assert.equal(calculateAccountBalance(mp, rows), 800)
+  assert.equal(calculateAccountBalance(mp, rows.slice(0, 1)), 800)
+})

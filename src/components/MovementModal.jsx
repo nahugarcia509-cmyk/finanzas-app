@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
-const blank = { type: 'expense', date: new Date().toISOString().slice(0, 10), description: '', amount: '', account_id: '', category_id: '', notes: '' }
+import { localDate } from '../lib/dates'
+const blank = { type: 'expense', date: localDate(), description: '', amount: '', account_id: '', category_id: '', notes: '' }
 export default function MovementModal({ open, onClose, onSave, accounts, categories, editing, defaultType = 'expense' }) {
   const [form, setForm] = useState(blank)
   useEffect(() => {
     if (!open) return
     const type = editing?.type || defaultType
     setForm(editing ? { ...editing, amount: String(editing.amount) } : {
-      ...blank, type, account_id: accounts[0]?.id || '', category_id: categories.find(c => c.type === type)?.id || ''
+      ...blank, date: localDate(), type, account_id: accounts[0]?.id || '', category_id: categories.find(c => c.type === type)?.id || ''
     })
   }, [open, editing, accounts, categories, defaultType])
   if (!open) return null

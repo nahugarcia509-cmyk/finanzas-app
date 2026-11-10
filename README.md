@@ -73,6 +73,34 @@ no reemplaza el saldo de Inicio por el saldo registrado de esa cuenta.
 
 En **Gestión de cuentas**, editar **Saldo actual** permite guardar el importe
 real disponible en esa cuenta. La aplicación calcula la base descontando el neto
-de los movimientos ya registrados hasta hoy, para evitar sumarlos dos veces.
+de todos los movimientos registrados, para evitar sumarlos dos veces.
 Los próximos movimientos actualizan el saldo normalmente. Elegir otra cuenta
 principal no modifica ningún importe ni asigna diferencias a otras cuentas.
+
+## Movimientos y saldos de cuentas
+
+Los saldos de cuentas se calculan desde una única lista de movimientos guardados.
+Un ingreso suma a su cuenta, un egreso descuenta de su cuenta y una transferencia
+resta del origen y suma al destino, sin cambiar el total ni el balance mensual.
+Editar, eliminar o cambiar la cuenta de un movimiento recalcula los saldos.
+Los movimientos registrados se reflejan en cuentas aunque su fecha sea posterior
+al día local; las fechas predeterminadas de los formularios usan el día local.
+Los pagos recurrentes y cuotas pendientes no son movimientos hasta registrarlos.
+
+Las transferencias locales se conservan al recargar. Supabase carga todas las
+páginas del historial antes de presentar saldos; no usa un historial parcial para
+calibrar el saldo real. Un movimiento de ahorro acompañado por una transferencia
+entre cuentas no descuenta ni acredita dos veces en la misma cuenta.
+Las búsquedas de las tablas no alteran el balance general.
+
+Pruebas de lógica: `node --test tests/*.test.js`.
+Prueba de navegador con Playwright disponible: `node tests/account-flow.browser.mjs`.
+Acepta `PLAYWRIGHT_MODULE`, `CHROMIUM_PATH` y `APP_URL`; usa un contexto aislado
+sin datos del usuario. Verifica transferencia total MP→Santander, gasto en
+Santander, edición de monto/cuenta, búsquedas, balance de Inicio, recarga y
+eliminación de la transferencia.
+
+`node tests/account-flow.supabase.browser.mjs` prueba el cliente real de Supabase
+contra una API simulada: inserción conjunta de ambas partes de una transferencia,
+registro de gasto en su cuenta y reconstrucción de saldos al recargar. No usa
+credenciales ni datos reales de Supabase.

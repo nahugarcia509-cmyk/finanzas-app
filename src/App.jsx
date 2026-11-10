@@ -15,11 +15,8 @@ import { seedCategories, seedTransactions } from './lib/seedData'
 import Auth from './components/Auth'
 import MovementModal from './components/MovementModal'
 import { calculateAccountBalance, initialBalanceForCurrentBalance, orderAccounts } from './lib/accounts'
-
-const localDate = () => {
-  const date = new Date()
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-}
+import { localDate } from './lib/dates'
+import { readAllTransactions } from './lib/transactions'
 
 const demoAccounts = [
   { id: 'a1', name: 'Billetera', initial_balance: 0 },
@@ -350,7 +347,7 @@ export default function App() {
   const [selectedIncomeCategories, setSelectedIncomeCategories] = useState(null)
   const [savingsForm, setSavingsForm] = useState({
     kind: 'deposit',
-    date: new Date().toISOString().slice(0, 10),
+    date: localDate(),
     amount: '',
     description: '',
     from_account_id: '',
@@ -374,7 +371,7 @@ export default function App() {
   const [settingsDraft, setSettingsDraft] = useState({ opening_balance_month: '', opening_balance_amount: '' })
   const [accountForm, setAccountForm] = useState({ name: '', current_balance: '' })
   const [editingAccountId, setEditingAccountId] = useState(null)
-  const [transferForm, setTransferForm] = useState({ from_account_id: '', to_account_id: '', amount: '', date: new Date().toISOString().slice(0, 10), description: '' })
+  const [transferForm, setTransferForm] = useState({ from_account_id: '', to_account_id: '', amount: '', date: localDate(), description: '' })
   const [confirmDialog, setConfirmDialog] = useState(null)
   const [preferencesLoaded, setPreferencesLoaded] = useState(false)
   const [isMobileViewport, setIsMobileViewport] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 760px)').matches)
@@ -406,7 +403,10 @@ export default function App() {
   const preferencesRequestRef = useRef(0)
   const notificationsRequestRef = useRef(0)
   const mountedRef = useRef(true)
-  useEffect(() => () => { mountedRef.current = false }, [])
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
 
   useEffect(() => {
     try { localStorage.setItem('finance_hide_numbers', String(numbersHidden)) } catch {}
@@ -617,7 +617,7 @@ export default function App() {
     setSelectedIncomeCategories(null)
     setSelectedReserveCategories(null)
     setSavingsGoals([])
-    setSavingsForm({ kind: 'deposit', date: new Date().toISOString().slice(0, 10), amount: '', description: '', from_account_id: '', to_account_id: '' })
+    setSavingsForm({ kind: 'deposit', date: localDate(), amount: '', description: '', from_account_id: '', to_account_id: '' })
     setGoalForm({ name: '', target: '', priority: 1 })
     setBigExpenseSearch('')
     setBigExpenseCategory('all')
@@ -886,14 +886,10 @@ export default function App() {
     setDataLoading(true)
     try {
       const currentUserId = session.user.id
-      const recentCutoff = new Date()
-      recentCutoff.setMonth(recentCutoff.getMonth() - 12)
-      const recentFrom = recentCutoff.toISOString().slice(0, 10)
-
       const fetchUserData = () => Promise.all([
         supabase.from('accounts').select('*').eq('user_id', currentUserId).order('name'),
         supabase.from('categories').select('*').eq('user_id', currentUserId).order('type').order('name'),
-        supabase.from('transactions').select('*,accounts(name),categories(name)').eq('user_id', currentUserId).gte('date', recentFrom).order('date', { ascending: false }),
+        readAllTransactions(supabase, currentUserId),
         supabase.from('user_settings').select('opening_balance_month,opening_balance_amount,theme,background_theme,sidebar_open,selected_income_categories,selected_reserve_categories,selected_forecast_categories,savings_goals').eq('user_id', currentUserId).maybeSingle(),
         supabase.from('recurring_payments').select('*').eq('user_id', currentUserId).order('day').order('name'),
         supabase.from('credit_plans').select('*').eq('user_id', currentUserId).order('created_at', { ascending: false }),
@@ -953,26 +949,6 @@ export default function App() {
         to_account_id: current.to_account_id || ownAccounts[0]?.id || ''
       }))
 
-      // El historial anterior se incorpora después del primer render para no bloquear el inicio.
-      const loadOlderHistory = async () => {
-        const { data, error } = await supabase
-          .from('transactions')
-          .select('*,accounts(name),categories(name)')
-          .eq('user_id', currentUserId)
-          .lt('date', recentFrom)
-          .order('date', { ascending: false })
-        if (!mountedRef.current || requestId !== loadRequestRef.current) return
-        if (error) return setNotice(`No se pudo completar el historial: ${error.message}`)
-        const older = (data || []).filter(row => row.user_id === currentUserId)
-        if (!older.length) return
-        setMovements(current => {
-          const ids = new Set(current.map(item => item.id))
-          return [...current, ...older.filter(item => !ids.has(item.id))]
-            .sort((x, y) => String(y.date || '').localeCompare(String(x.date || '')))
-        })
-      }
-      if ('requestIdleCallback' in window) window.requestIdleCallback(loadOlderHistory, { timeout: 2500 })
-      else window.setTimeout(loadOlderHistory, 300)
     } catch (e) {
       const offlineMessage = typeof navigator !== 'undefined' && !navigator.onLine
         ? 'No hay conexión. Se mantienen los últimos datos cargados; al volver internet se actualizarán automáticamente.'
@@ -1047,7 +1023,7 @@ export default function App() {
     setEditingAccountId(account.id)
     setAccountForm({
       name: account.name || '',
-      current_balance: calculateAccountBalance(account, movements, localDate()).toFixed(2)
+      current_balance: calculateAccountBalance(account, movements).toFixed(2)
     })
   }
 
@@ -1060,7 +1036,7 @@ export default function App() {
     if (!name) return setNotice('Ingrese un nombre para la cuenta.')
     if (accountForm.current_balance === '' || !Number.isFinite(currentBalance)) return setNotice('Ingrese un saldo actual válido.')
     const initialBalance = wasEditing
-      ? initialBalanceForCurrentBalance(editingAccountId, movements, currentBalance, localDate())
+      ? initialBalanceForCurrentBalance(editingAccountId, movements, currentBalance)
       : currentBalance
 
     if (!configured) {
@@ -1174,15 +1150,20 @@ export default function App() {
       { user_id: session?.user?.id, type: 'income', date: transferForm.date, description, amount, account_id: transferForm.to_account_id, category_id: null, notes: `${TRANSFER_IN} ${transferId}` }
     ]
 
+    if (configured && !session?.user?.id) return setNotice('No existe una sesión activa.')
     if (!configured) {
       const localRows = rows.map((row, index) => ({ ...row, id: `${transferId}-${index}`, accounts: { name: index ? to?.name : from?.name }, categories: null }))
-      setMovements(current => [...localRows, ...current])
+      setMovements(current => {
+        const next = [...localRows, ...current]
+        localStorage.setItem('finance_demo', JSON.stringify(next))
+        return next
+      })
     } else {
       const { data, error } = await supabase.from('transactions').insert(rows).select('*,accounts(name),categories(name)')
       if (error) return setNotice(error.message)
       setMovements(current => [...(data || []), ...current])
     }
-    setTransferForm({ from_account_id: accounts[0]?.id || '', to_account_id: accounts[1]?.id || '', amount: '', date: new Date().toISOString().slice(0, 10), description: '' })
+    setTransferForm({ from_account_id: accounts[0]?.id || '', to_account_id: accounts[1]?.id || '', amount: '', date: localDate(), description: '' })
     setNotice('Transferencia registrada sin afectar ingresos ni egresos.')
   }
 
@@ -1452,6 +1433,8 @@ export default function App() {
     // de transferencia. Esos movimientos solo cambian los saldos de las cuentas y no
     // afectan ingresos, egresos ni resultados mensuales.
     const savingsAccount = isDeposit ? fromAccount : toAccount
+    const accountsAreDifferent = fromAccount.id !== toAccount.id
+    const transferId = accountsAreDifferent ? crypto.randomUUID() : null
     const savingsPayload = {
       type: isDeposit ? 'expense' : 'income',
       date: savingsForm.date,
@@ -1459,11 +1442,9 @@ export default function App() {
       amount,
       account_id: savingsAccount.id,
       category_id: category.id,
-      notes: `${noteMarker} ${description}`
+      notes: `${noteMarker}${transferId ? ` [ACCOUNT_TRANSFER:${transferId}]` : ''} ${description}`
     }
 
-    const accountsAreDifferent = fromAccount.id !== toAccount.id
-    const transferId = accountsAreDifferent ? crypto.randomUUID() : null
     const transferDescription = isDeposit
       ? `Ahorro de ${fromAccount.name} a ${toAccount.name}`
       : `Retiro de ahorro de ${fromAccount.name} a ${toAccount.name}`
@@ -1521,7 +1502,7 @@ export default function App() {
 
     setSavingsForm({
       kind: 'deposit',
-      date: new Date().toISOString().slice(0, 10),
+      date: localDate(),
       amount: '',
       description: '',
       from_account_id: fromAccount.id,
@@ -1732,12 +1713,12 @@ export default function App() {
       }),
     [searchedRows]
   )
-  const income = incomeRows.reduce((s, x) => s + Number(x.amount), 0)
-  const expense = expenseRows.reduce((s, x) => s + Number(x.amount), 0)
+  const income = monthRows.filter(row => row.type === 'income').reduce((s, x) => s + Number(x.amount), 0)
+  const expense = monthRows.filter(row => row.type === 'expense').reduce((s, x) => s + Number(x.amount), 0)
 
   const expenseRowsWithoutSavings = useMemo(
-    () => expenseRows.filter(x => savingsKind(x) !== 'deposit'),
-    [expenseRows]
+    () => monthRows.filter(x => x.type === 'expense' && savingsKind(x) !== 'deposit'),
+    [monthRows]
   )
 
   const expenseWithoutSavings = useMemo(
@@ -2041,7 +2022,7 @@ export default function App() {
   const selectedMonthlySavings = useMemo(() => {
     const incomeNames = new Set(selectedIncomeAnalysis.map(x => x.name))
     const expenseNames = new Set(selectedReserveExpenses.map(x => x.name))
-    const currentMonthKey = new Date().toISOString().slice(0, 7)
+    const currentMonthKey = monthKey()
 
     const totals = analysisMonths.map(monthKeyValue => {
       let ingresos = 0
@@ -2517,12 +2498,11 @@ export default function App() {
   }, [month, monthRows])
 
 
-  const accountBalanceDate = localDate()
   const accountDashboardData = useMemo(() => accounts.map(account => ({
     id: account.id,
     name: account.name,
-    saldo: calculateAccountBalance(account, movements, accountBalanceDate)
-  })).sort((a, b) => b.saldo - a.saldo), [accounts, movements, accountBalanceDate])
+    saldo: calculateAccountBalance(account, movements)
+  })).sort((a, b) => b.saldo - a.saldo), [accounts, movements])
   const accountBalance = (accountId) => accountDashboardData.find(account => account.id === accountId)?.saldo || 0
 
   const totalAccountBalance = useMemo(
