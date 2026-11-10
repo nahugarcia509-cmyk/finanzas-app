@@ -24,24 +24,15 @@ test('la cuenta principal queda primera sin alterar la lista original; una prefe
   assert.deepEqual(orderAccounts(accounts, 'deleted'), accounts)
 })
 
-test('Mercado Pago coincide con el balance si las demás cuentas están en cero, sin duplicar su saldo inicial', async () => {
-  const { distributeAccountBalances } = await import('../src/lib/accounts.js')
-  const accounts = [{ id: 'mp', name: 'Mercado Pago', initial_balance: 1002486.29 }, { id: 'nx', initial_balance: 0 }, { id: 's', initial_balance: 0 }]
-  const movements = [{ account_id: 'mp', date: '2026-11-01', type: 'income', amount: 2268573.1 }]
-  const result = distributeAccountBalances(accounts, movements, 'mp', 2268573.1, '2026-11')
-  assert.equal(result.find(a => a.id === 'mp').saldo, 2268573.1)
-  assert.equal(result.reduce((sum, a) => sum + a.saldo, 0), 2268573.1)
-  assert.equal(accounts[0].initial_balance, 1002486.29)
-  assert.equal(distributeAccountBalances(accounts, movements, '', 2268573.1, '2026-11')[0].saldo, 2268573.1)
-})
-
-test('la distribución respeta las otras cuentas y excluye sus movimientos de meses posteriores', async () => {
-  const { distributeAccountBalances } = await import('../src/lib/accounts.js')
-  const accounts = [{ id: 'mp', initial_balance: 9000 }, { id: 'bank', initial_balance: 100 }]
-  const movements = [{ account_id: 'bank', date: '2026-11-01', type: 'income', amount: 50 }, { account_id: 'bank', date: '2026-12-01', type: 'income', amount: 800 }]
-  const result = distributeAccountBalances(accounts, movements, 'mp', 1000, '2026-11')
-  assert.equal(result.find(a => a.id === 'bank').saldo, 150)
-  assert.equal(result.find(a => a.id === 'mp').saldo, 850)
-  assert.equal(result.reduce((sum, a) => sum + a.saldo, 0), 1000)
-  assert.deepEqual(distributeAccountBalances([], movements, '', 1000, '2026-11'), [])
+test('guardar el saldo real de Mercado Pago no duplica los movimientos y no afecta Santander', async () => {
+  const { initialBalanceForCurrentBalance } = await import('../src/lib/accounts.js')
+  const movements = [{ account_id: 'mp', date: '2026-11-01', type: 'income', amount: 1004617.39 }]
+  const account = { id: 'mp', initial_balance: 2266442 }
+  assert.equal(calculateAccountBalance(account, movements, '2026-11-10'), 3271059.39)
+  const corrected = { ...account, initial_balance: initialBalanceForCurrentBalance('mp', movements, 2268573.1, '2026-11-10') }
+  assert.equal(calculateAccountBalance(corrected, movements, '2026-11-10'), 2268573.1)
+  assert.equal(calculateAccountBalance({ id: 'santander', initial_balance: 0 }, movements, '2026-11-10'), 0)
+  const future = [...movements, { account_id: 'mp', date: '2026-12-01', type: 'expense', amount: 100 }]
+  assert.equal(initialBalanceForCurrentBalance('mp', future, 2268573.1, '2026-11-10'), corrected.initial_balance)
+  assert.equal(calculateAccountBalance(corrected, future, '2026-12-01'), 2268473.1)
 })

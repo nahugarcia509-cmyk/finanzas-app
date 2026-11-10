@@ -15,21 +15,9 @@ export function calculateAccountBalance(account, movements, throughDate) {
     }, Number(account.initial_balance) || 0)
 }
 
-// El balance mensual es el total disponible. La principal conserva el remanente
-// después de distribuir los saldos registrados en las demás cuentas.
-export function distributeAccountBalances(accounts, movements, primaryAccountId, closingBalance, month) {
-  const balances = accounts.map(account => ({
-    id: account.id,
-    name: account.name,
-    saldo: calculateAccountBalance(account, movements, `${month}-31`)
-  }))
-  const principal = balances.find(account => account.id === primaryAccountId)
-    || [...balances].sort((a, b) => b.saldo - a.saldo)[0]
-  if (!principal) return balances
-  const otherBalance = balances.reduce((sum, account) => sum + (account.id === principal.id ? 0 : account.saldo), 0)
-  return balances.map(account => ({
-    ...account,
-    saldo: account.id === principal.id ? closingBalance - otherBalance : account.saldo,
-    reconciled: account.id === principal.id
-  }))
+// Convierte el saldo real informado en la base necesaria para no duplicar
+// los movimientos existentes. Los movimientos futuros siguen pendientes.
+export function initialBalanceForCurrentBalance(accountId, movements, currentBalance, throughDate) {
+  const net = calculateAccountBalance({ id: accountId, initial_balance: 0 }, movements, throughDate)
+  return Math.round((Number(currentBalance) - net) * 100) / 100
 }
